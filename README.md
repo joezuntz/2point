@@ -97,6 +97,9 @@ QUANT2=GP   // second quantity is galaxy position
              // For shear this is easy: use +/- for real-space xi+/x- and E/B for Fourier.
              // Need more codes for other quantities.
 
+NANGLE=6   // Number of angular bins
+NBIN=3     // Number of tomographic bins
+
 WINDOWS=T   // angular quantities are specified as window functions, not as ranges
 
 if windows=T:
@@ -111,7 +114,7 @@ MIN2 = 10.0
 MAX2 = 30.0 
            // etc. for the min and max values of each bins
 
-           // Other possible keywords?
+           // Other possible keywords??
 SIMULATD=F // This is real data/this is simulated data
 BLINDED=T  // This has been blinded in some way
 ```
@@ -121,12 +124,14 @@ Binary table for data extensions
 ------------------------------
 
 
- - BIN1  (32 bit integer [TINT], tomographic bin for first quantity, starting from 1)
- - BIN2  (32 bit integer [TINT], same as for bin 1)
- - VALUE (64 bit float [TDOUBLE], correlation value)
- - ERR   (64 bit float [TDOUBLE], optional nominal error bar)
- - LERR  (64 bit float [TDOUBLE], optional nominal upper error bar)
- - UERR  (64 bit float [TDOUBLE], optional nominal lower error bar)
+ - BIN1     (32 bit integer [TINT], tomographic bin for first quantity, starting from 1)
+ - BIN2     (32 bit integer [TINT], same as for bin 1)
+ - ANGBIN   (32 bit integer [TINT], angular bin index, starging from one)
+ - VALUE    (64 bit float [TDOUBLE], correlation value)
+ - ANG      (64 bit integer [TDOUBLE], optional nominal angle, for plotting/quick tests)
+ - ERR      (64 bit float [TDOUBLE], optional nominal error bar)
+ - LERR     (64 bit float [TDOUBLE], optional nominal upper error bar)
+ - UERR     (64 bit float [TDOUBLE], optional nominal lower error bar)
 
 
 Header for window sections
