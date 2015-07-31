@@ -19,11 +19,11 @@ Definite use case:
 Possible requirements for this:
 
 - At least five indices to a given measurement:
-	- type1 e.g. galaxy position
-	- type2 e.g. galaxy xi+
-	- bin1 e.g. tomographic bin 1
-	- bin2 e.g. tomographic bin 2
-	- nominal_theta_or_ell e.g. nominal bin center/mean in arcmin
+    - type1 e.g. galaxy position
+    - type2 e.g. galaxy xi+
+    - bin1 e.g. tomographic bin 1
+    - bin2 e.g. tomographic bin 2
+    - nominal_theta_or_ell e.g. nominal bin center/mean in arcmin
 
 - Ugh - in future there are also bins in other quantities than redshift, e.g. luminosity.
 
@@ -33,22 +33,22 @@ Possible requirements for this:
 
 - We *might* want to include n(z). Would need to tag as a particular version?
   - Pro
-  	- including this packages everything you need from the data in one place
-	- lets you be unambiguous which bin refers to which n(z)
-	- lets you make explicit what form the n(z) is in (histogram or sample points)
+    - including this packages everything you need from the data in one place
+    - lets you be unambiguous which bin refers to which n(z)
+    - lets you make explicit what form the n(z) is in (histogram or sample points)
   - Con 
-  	- there will be multiple different estimates of n(z)
-		- package multiple in one file? could have nz_1, nz_2, etc. fiddly.
+    - there will be multiple different estimates of n(z)
+        - package multiple in one file? could have nz_1, nz_2, etc. fiddly.
 
 - Could also potentially (and optionally) package covariances with this format.
-	- Pro
-		- Ensures that you know the ordering of the covmat as it must be same as data vector
-		- Handy to keep everything together
-	- Con
-		- Bloat/feature creep
-		- Same issue with multiple estimates
-		- Much larger files, maybe
-		- Might be harder to deal with sparse forms, depending on format?
+    - Pro
+        - Ensures that you know the ordering of the covmat as it must be same as data vector
+        - Handy to keep everything together
+    - Con
+        - Bloat/feature creep
+        - Same issue with multiple estimates
+        - Much larger files, maybe
+        - Might be harder to deal with sparse forms, depending on format?
 
 
 Other possible use cases:
@@ -66,14 +66,14 @@ I suggest a FITS format for ease of use and flexibility.
 Assuming we want this in a FITS file, could:
  - package all the stuff into one big table with columns for type
  - or have a different extension for different types of quantities (think this is much better)
- 	- are xi+ and xi- different quantities? probably easier to handle then.
+    - are xi+ and xi- different quantities? probably easier to handle then.
 
 Code needed for this:
  - libraries in C and in Python for making and loading these
- 	- concatenating all columns
- 	- choosing bins and angular ranges to use and just getting out those (concatenated)
- 	- choosing just some of the pairs of quantities e.g. ignoring xi- or B-modes
- 	- taking from a set of theory curves an interpolated/binned prediction for a given data set
+    - concatenating all columns
+    - choosing bins and angular ranges to use and just getting out those (concatenated)
+    - choosing just some of the pairs of quantities e.g. ignoring xi- or B-modes
+    - taking from a set of theory curves an interpolated/binned prediction for a given data set
  - scripts to/from convert existing formats - e.g. Nicaea output.
 
 Strawman Proposal
@@ -91,27 +91,41 @@ Each pair of quantities has its own extension, with some standard ordering. Exte
 
 
 QUANT1=G+   // First quantitiy is galaxy xi+(theta)
+
 QUANT2=GP   // second quantity is galaxy position
-			// Quantitiy codes should include specifying whethet Fourier space/real space
-			// For shear this is easy: use +/- for real-space xi+/x- and E/B for Fourier.
-			// Need more codes for other quantities.
+
+             // Quantitiy codes should include specifying whethet Fourier space/real space
+             
+             // For shear this is easy: use +/- for real-space xi+/x- and E/B for Fourier.
+             
+             // Need more codes for other quantities.
 
 WINDOWS=T   // angular quantities are specified as window functions, not as ranges
 
 if windows=T:
+
 WINPREFX=STD_WIN  // elsewhere in the file look for extensions STD_WIN1, STD_WIN2, etc.
-			      // for angular bin 1, angular bin 2, etc. 
-				  // optional.  if not specified assume G+_GP_WIN1, etc.
+
+                  // for angular bin 1, angular bin 2, etc. 
+                  
+                  // optional.  if not specified assume G+_GP_WIN1, etc.
 
 if WINDOWS=F:
+
 MIN1 = 2.0
+
 MAX1 = 10.0
+
 MIN2 = 10.0
+
 MAX2 = 30.0 
+
 etc. for the min and max values of each bins
 
            // Other possible keywords
+           
 SIMULATD=F // This is real data/this is simulated data
+
 BLINDED=T  // This has been blinded in some way
 
 
@@ -131,6 +145,7 @@ Header for window sections
 --------------------------
 EXTNAME = G+_GP_WIN1   // for bin 1
 SPACE = REAL   // Or FOURIER - specifies real space or fourier space ??
+
 DIM = 2  // Or 3D for 3D measurements e.g. P(k) ??
 
 Binary table for window sections
