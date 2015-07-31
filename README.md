@@ -20,7 +20,7 @@ Possible requirements for this:
 
 - At least five indices to a given measurement:
     - type1 e.g. galaxy position
-    - type2 e.g. galaxy shear +
+    - type2 e.g. galaxy tangential shear 
     - bin1 e.g. tomographic bin 1
     - bin2 e.g. tomographic bin 2
     - nominal_theta_or_ell e.g. nominal bin center/mean in arcmin
