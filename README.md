@@ -9,9 +9,9 @@ Basic Requirements
 ------------------
 
 Definite use case:
-- Galaxy position 2-point        }
-- Galaxy shear 2-point           } - all in Fourier or real space
-- Galaxy magnification 2-point   }
+- Galaxy position 2-point        - in Fourier or real space
+- Galaxy shear 2-point           - in Fourier or real space
+- Galaxy magnification 2-point   - in Fourier or real space
 - Galaxy/galaxy-lensing
 - COSEBIS
 
@@ -20,7 +20,7 @@ Possible requirements for this:
 
 - At least five indices to a given measurement:
     - type1 e.g. galaxy position
-    - type2 e.g. galaxy xi+
+    - type2 e.g. galaxy tangential shear 
     - bin1 e.g. tomographic bin 1
     - bin2 e.g. tomographic bin 2
     - nominal_theta_or_ell e.g. nominal bin center/mean in arcmin
@@ -91,11 +91,11 @@ Each pair of quantities has its own extension, with some standard ordering. Exte
 2PTDATA=T  // This extension contains 2-point data, not some auxiliary information
 
 
-QUANT1=G+   // First quantitiy is galaxy xi+(theta)
+QUANT1=GT   // First quantitiy is galaxy tangential shear 
 QUANT2=GP   // second quantity is galaxy position
              // Quantitiy codes should include specifying whethet Fourier space/real space
-             // For shear this is easy: use +/- for real-space xi+/x- and E/B for Fourier.
-             // Need more codes for other quantities.
+             // Since we will want to store the combination xi+(theta) = GTGT + GPGP
+             // we can also use QUANT=G+ and QUANT2=G+ for this (and sim for -)
 
 NANGLE=6   // Number of angular bins
 NBIN=3     // Number of tomographic bins
