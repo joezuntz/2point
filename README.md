@@ -87,7 +87,6 @@ Header for data extensions
 
 Each pair of quantities has its own extension, with some standard ordering. Extension header specifies which pair it is with a 2-character code (case insensitive; none of the G versus g nonsense):
 
-#!text
 ```
 2PTDATA=T  // This extension contains 2-point data, not some auxiliary information
 
@@ -133,7 +132,6 @@ Binary table for data extensions
 Header for window sections
 --------------------------
 ```
-#!text
 EXTNAME = G+_GP_WIN1   // for bin 1
 SPACE = REAL   // Or FOURIER - specifies real space or fourier space ??
 DIM = 2  // Or 3D for 3D measurements e.g. P(k) ??
