@@ -100,14 +100,17 @@ QUANT2=GP   // second quantity is galaxy position
 NANGLE=6   // Number of angular bins
 NBIN=3     // Number of tomographic bins
 
-WINDOWS=T   // angular quantities are specified as window functions, not as ranges
+WINDOWS=SAMPLE   // angular quantities are specified as interpolated samples
+WINDOWS=RANGE_LIN   // angular quantities are specified as the average over a range
+WINDOWS=RANGE_LOG   // angular quantities are specified as the log-average over a range
+WINDOWS=EXTENSION   // angular quantities are specified as window functions found in an extension
 
-if windows=T:
+if windows=EXTENSION:
 WINPREFX=STD_WIN  // elsewhere in the file look for extensions STD_WIN1, STD_WIN2, etc.
                   // for angular bin 1, angular bin 2, etc. 
                   // optional.  if not specified assume G+_GP_WIN1, etc.
 
-if WINDOWS=F:
+if WINDOWS=RANGE_LOG or RANGE_LIN:
 MIN1 = 2.0
 MAX1 = 10.0
 MIN2 = 10.0
@@ -128,7 +131,7 @@ Binary table for data extensions
  - BIN2     (32 bit integer [TINT], same as for bin 1)
  - ANGBIN   (32 bit integer [TINT], angular bin index, starging from one)
  - VALUE    (64 bit float [TDOUBLE], correlation value)
- - ANG      (64 bit integer [TDOUBLE], optional nominal angle, for plotting/quick tests)
+ - ANG      (64 bit integer [TDOUBLE], optional unless WINDOWS=SAMPLE, nominal angle, for plotting/quick tests)
  - ERR      (64 bit float [TDOUBLE], optional nominal error bar)
  - LERR     (64 bit float [TDOUBLE], optional nominal upper error bar)
  - UERR     (64 bit float [TDOUBLE], optional nominal lower error bar)
