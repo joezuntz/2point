@@ -91,8 +91,8 @@ Each pair of quantities has its own extension, with some standard ordering. Exte
 2PTDATA=T  // This extension contains 2-point data, not some auxiliary information
 
 
-QUANT1=GT   // First quantitiy is galaxy tangential shear 
-QUANT2=GP   // second quantity is galaxy position
+QUANT1=GPF   // First quantitiy is galaxy position in fourier space
+QUANT2=GEF   // second quantity is galaxy shear E-mode in fourier space
              // Quantitiy codes should include specifying whethet Fourier space/real space
              // Since we will want to store the combination xi+(theta) = GTGT + GPGP
              // we can also use QUANT=G+ and QUANT2=G+ for this (and sim for -)
