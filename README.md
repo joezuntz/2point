@@ -2,149 +2,136 @@ A file format for 2-point function measurements.
 ================================================
 
 
-As we start working on combined probes we will need to keep track of complicated combinations of two-point functions.  So it is useful to put together a well-defined file format to avoid ambiguity when describing a set of observed or simulated quantities.  The software facilities to handle this are also worth thinking about.
+As we start working on combined probes we will need to keep track of complicated combinations of two-point functions.  So it is useful to put together a well-defined file format to avoid ambiguity when describing a set of observed or simulated quantities. 
+
+This repository describes a specification for such a file format and will collect code to process it.
+
+See the initial notes file for some early thoughts that led to this format, and the included fits file as an example.
+
+File Structure
+--------------
+
+A 2-point data file is a FITS file containing extension headers with specified contents.
+
+It should contain:
+ - one or more 2PTDATA extensions, each containing a two-point function between two specified types of quantity
+ - zero or more NZDATA extensions, each containing a collection of redshift distributions
+ - zero or more COVDATA extensions, each containing a covariance matrix for all the data in the file
+ - zero or more WINDATA extensions, each containing a collection of window functions of angle
+
+Quantity Codes
+---------------
+
+A two point measurement is a correlation function of two quantities, usually as a function of some angular measurement (or angular wavenumber in Fourier space).  Many different quantities can be used in two-point measurements. For example, if you see the quantity C^EE_ell, that could be a CMB polarization measurement or a galaxy shear measurement.
+
+Three-letter quantity codes are used in the format described here to define more carefully what quantities are being used.  The First letter describes the type of object or field being measured, the second what kind of statistical measurement is being used, and the third the basis (real, Fourier, or any other).
+
+For example, the code GPF would represent Galaxy position C_ell values: the G stands for galaxy, the P for position, and the F for Fourier.  A collection of other values are defined here, but more will be added as we progress.  Not all possible combinations are valid.
+
+First letter:
+    G : Galaxy
+    C : CMB
+    L : Clusters
+    P : Point-spread function
+
+Second letter:
+    E : E-mode, for polarization (for C) or shear (for G)
+    B : B-mode
+    K : convergence
+    + : For xi_+(theta)
+    - : For xi_-(theta)
+
+Third letter:
+    F : Fourier space, such as C_ell
+    R : For real space such as correlation functions
+    C : For COSEBIS (?)
 
 
-Basic Requirements
-------------------
-
-Definite use case:
-- Galaxy position 2-point        - in Fourier or real space
-- Galaxy shear 2-point           - in Fourier or real space
-- Galaxy magnification 2-point   - in Fourier or real space
-- Galaxy/galaxy-lensing
-- COSEBIS
 
 
-Possible requirements for this:
-
-- At least five indices to a given measurement:
-    - type1 e.g. galaxy position
-    - type2 e.g. galaxy tangential shear 
-    - bin1 e.g. tomographic bin 1
-    - bin2 e.g. tomographic bin 2
-    - nominal_theta_or_ell e.g. nominal bin center/mean in arcmin
-
-- Ugh - in future there are also bins in other quantities than redshift, e.g. luminosity.
-
-- As well as/instead of nominal theta/ell might also want a Window function. This might be trivial min/max but could be more general function, especially for C_ell.
-
-- Distinguish xi-, xi+, E/B etc.
-
-- We *might* want to include n(z). Would need to tag as a particular version?
-  - Pro
-    - including this packages everything you need from the data in one place
-    - lets you be unambiguous which bin refers to which n(z)
-    - lets you make explicit what form the n(z) is in (histogram or sample points)
-  - Con 
-    - there will be multiple different estimates of n(z)
-        - package multiple in one file? could have nz_1, nz_2, etc. fiddly.
-
-- Could also potentially (and optionally) package covariances with this format.
-    - Pro
-        - Ensures that you know the ordering of the covmat as it must be same as data vector
-        - Handy to keep everything together
-    - Con
-        - Bloat/feature creep
-        - Same issue with multiple estimates
-        - Much larger files, maybe
-        - Might be harder to deal with sparse forms, depending on format?
 
 
-Other possible use cases:
-- Cross-correlations with CMB
-- Pure CMB C_ell - there are already formats in use by Planck etc. for this.
-- Intrinsic alignments
-- PSF correlation functions
-- 3D correlation function measurements??
+2PTDATA extensions
+-------------------
 
-# FITS
+A 2PTDATA Binary Table extension is intended to contain the actual 2-point data values, for any required angular bin combinations, for a specific pair of quantities, such as galaxy shear E-mode, B-mode, position, xi(theta) CMB convergence, or any other quantities that can be correlated as a function of angle or angular scale.
 
+The extension must contain the following parameters in its header:
 
-I suggest a FITS format for ease of use and flexibility.
+    2PTDATA  = T          // This sentinel marks the extension as 2PTDATA
+    QUANT1   = GPF        // See "quantity codes" above
+    QUANT2   = GPF 
+    NANGLE   = 20         // The number of angular bins.
+    NBIN_1   = 3          // The number of redshift/distance bins. 
+    NBIN_2   = 3          // The number of redshift/distance bins. 
+    WINDOWS  = SAMPLE     // The form of the window function - at the moment this must be SAMPLE.
+    SIMULATD = T          // This is simulated data
+    BLINDED  = F          // This is blinded data
 
-Assuming we want this in a FITS file, could:
- - package all the stuff into one big table with columns for type
- - or have a different extension for different types of quantities (think this is much better)
-    - are xi+ and xi- different quantities? probably easier to handle then.
-
-Code needed for this:
- - libraries in C and in Python for making and loading these
-    - concatenating all columns
-    - choosing bins and angular ranges to use and just getting out those (concatenated)
-    - choosing just some of the pairs of quantities e.g. ignoring xi- or B-modes
-    - taking from a set of theory curves an interpolated/binned prediction for a given data set
- - scripts to/from convert existing formats - e.g. Nicaea output.
-
-Strawman Proposal
-=================
-
-FITS format.
-
-Header for data extensions
-------------------------
+For many 2-point data sets (but not, for example, CMB ones), the extension must also contain these header parameters:
+  KERNEL_1 = NZ_SOURCE  // The n(z) data set for quantity 1.  This is a reference to an NZDATA file elsewhere in the fits file
+  KERNEL_2 = NZ_SOURCE
 
 
-Each pair of quantities has its own extension, with some standard ordering. Extension header specifies which pair it is with a 2-character code (case insensitive; none of the G versus g nonsense):
+The extension must then contain these data columns:
+    BIN1   8-byte integer  // Integer, the index of the first bin
+    BIN2   8-byte integer  // Integer, the index of the second bin
+    ANGBIN 8-byte integer  // The angular bin index
+    VALUE  8-byte real     // The data value for this combination.
 
-```
-2PTDATA=T  // This extension contains 2-point data, not some auxiliary information
-
-
-QUANT1=GPF   // First quantitiy is galaxy position in fourier space
-QUANT2=GEF   // second quantity is galaxy shear E-mode in fourier space
-             // Quantitiy codes should include specifying whethet Fourier space/real space
-             // Since we will want to store the combination xi+(theta) = GTGT + GPGP
-             // we can also use QUANT=G+ and QUANT2=G+ for this (and sim for -)
-
-NANGLE=6   // Number of angular bins
-NBIN=3     // Number of tomographic bins
-
-WINDOWS=SAMPLE   // angular quantities are specified as interpolated samples
-WINDOWS=RANGE_LIN   // angular quantities are specified as the average over a range
-WINDOWS=RANGE_LOG   // angular quantities are specified as the log-average over a range
-WINDOWS=EXTENSION   // angular quantities are specified as window functions found in an extension
-
-if windows=EXTENSION:
-WINPREFX=STD_WIN  // elsewhere in the file look for extensions STD_WIN1, STD_WIN2, etc.
-                  // for angular bin 1, angular bin 2, etc. 
-                  // optional.  if not specified assume G+_GP_WIN1, etc.
-
-if WINDOWS=RANGE_LOG or RANGE_LIN:
-MIN1 = 2.0
-MAX1 = 10.0
-MIN2 = 10.0
-MAX2 = 30.0 
-           // etc. for the min and max values of each bins
-
-           // Other possible keywords??
-SIMULATD=F // This is real data/this is simulated data
-BLINDED=T  // This has been blinded in some way
-```
+Optionally, it can also contain this column:
+    ANG    8-byte real
 
 
-Binary table for data extensions
-------------------------------
+NZDATA Extension
+----------------
+
+An NZDATA Binary Table extension is intended to contain the number density distributions as a 
+function of redshift for a quantity.
+
+Not that we use the term "bin" to mean two things here - tomographic bins, meaning selections
+of galaxies hopefully in a particular redshift range, and histogram bins, the small division
+in redshift that we get n(z) measured in.
+
+The extension must contain the following parameters in its header:
+
+    NZDATA  = T          // This sentinel marks the extension as n(z) data
+    EXTNAME = NAME       // The name of this n(z) kernel.
+    NBIN    = 5          // Integer number of tomographic bins
+    NZ      = 100        // Integer number of histogram bins
+
+The extension must then contain these data columns:
+    Z_LOW   8-byte real  // Real, the z value for the lower end of each redshift histogram bin
+    Z_MID   8-byte real  // Real, the z value for a middle point of each redshift histogram bin
+    Z_HIGH  8-byte real  // Real, the z value for the upper end of each redshift histogram bin
+    BIN1    8-byte real  // Real, the n(z) value for this histogram bin for the first tomographic bin
+    etc.    BIN2, BIN3, etc.
 
 
- - BIN1     (32 bit integer [TINT], tomographic bin for first quantity, starting from 1)
- - BIN2     (32 bit integer [TINT], same as for bin 1)
- - ANGBIN   (32 bit integer [TINT], angular bin index, starging from one)
- - VALUE    (64 bit float [TDOUBLE], correlation value)
- - ANG      (64 bit integer [TDOUBLE], optional unless WINDOWS=SAMPLE, nominal angle, for plotting/quick tests)
- - ERR      (64 bit float [TDOUBLE], optional nominal error bar)
- - LERR     (64 bit float [TDOUBLE], optional nominal upper error bar)
- - UERR     (64 bit float [TDOUBLE], optional nominal lower error bar)
+
+COVDATA Extension
+----------------
+
+A covdata extension contains a covariance matrix for all the data points in the file, stored as an image HDU.
+
+Although the ordering of the points can be derived from the order of the data in the file, for convenience the header also includes information about which chunks of the matrix correspond to which data.
 
 
-Header for window sections
---------------------------
-```
-EXTNAME = G+_GP_WIN1   // for bin 1
-SPACE = REAL   // Or FOURIER - specifies real space or fourier space ??
-DIM = 2  // Or 3D for 3D measurements e.g. P(k) ??
-```
-Binary table for window sections
---------------------------
-- THETA or ELL (64 bit float [TDOUBLE], angular value)
-- VALUE (64 bit float [TDOUBLE], measurement)
+The header must contain these keys:
+
+   COVDATA =       True     // Sentinel for covariance matrix
+   EXTNAME =     COVMAT     // Name of this covariance matrix
+    NAME_0 = 'SHEAR_SHEAR'  // Name of the 2PTDAT extension of the first chunk of covmat
+    STRT_0 =          0     // Integer, starting position of the first data set stored here
+    LEN_0  =        300     // Integer, length of the first data set stored here
+    NAME_1 =      'GGL'     // Name of the 2PTDAT extension of the second chunk of covmat
+    STRT_1 =        300     // Integer, starting position of the second data set stored here
+    LEN_1  =        180     // Integer, length of the second data set stored here
+
+The image in the extension should be of type 8-byte reals and be a square representation of the covariance matrix. The order of both the chunks of data and the values within each chunk must exactly match the order of the data in the file.
+
+
+WINDATA Extension
+-----------------
+
+We have not yet considered this extension properly. At the moment only WINDOWS=sample is accepted.
