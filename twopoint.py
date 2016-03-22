@@ -84,7 +84,7 @@ class NumberDensity(object):
 
     def to_fits(self):
         header = fits.Header()
-        header['NZDATA']= True
+        header[NZ_SENTINEL]= True
         header['EXTNAME'] = self.name
 
         columns = [
@@ -173,7 +173,7 @@ class SpectrumMeasurement(object):
 
     def to_fits(self):
         header = fits.Header()
-        header['2PTDATA']= True
+        header[TWOPOINT_SENTINEL]= True
         header['EXTNAME']=self.name
         header['QUANT1'] = self.type1.value
         header['QUANT2'] = self.type2.value
@@ -214,7 +214,7 @@ class CovarianceMatrixInfo(object):
 
     def to_fits(self):
         header = fits.Header()
-        header['COVDATA']= True
+        header[COV_SENTINEL]= True
         header['EXTNAME'] = self.name
         for i,(start_index,name) in enumerate(zip(self.starts, self.names)):
             header['STRT_{}'.format(i)] = start_index
