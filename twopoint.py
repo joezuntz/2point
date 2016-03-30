@@ -8,6 +8,8 @@ TWOPOINT_SENTINEL = "2PTDATA"
 NZ_SENTINEL = "NZDATA"
 COV_SENTINEL = "COVDATA"
 
+window_types=["SAMPLE","CLBP"]
+
 
 class Types(Enum):
     """
@@ -103,7 +105,8 @@ class NumberDensity(object):
 
 
 class SpectrumMeasurement(object):
-    def __init__(self, name, bins, types, kernels, windows, angular_bin, value, angle=None, error=None):
+    def __init__(self, name, bins, types, kernels, windows, angular_bin, value, angle=None, error=None, metadata=None):
+        """metadata is a dictionary which will get added to the fits header"""
         self.name = name
         self.bin1, self.bin2 = bins
         self.type1, self.type2 = types
@@ -111,8 +114,12 @@ class SpectrumMeasurement(object):
         self.angular_bin = angular_bin
         self.angle = angle
         self.value = value
-        self.windows = windows
+        if windows in window_types:
+            self.windows = windows
+        else:
+            raise TypeError("window type %s not recognised"%windows)
         self.error = error
+        self.metadata = metadata
 
     def mask(self, mask):
         self.bin1 = self.bin1[mask]
@@ -151,7 +158,7 @@ class SpectrumMeasurement(object):
         kernel2 = extension.header['KERNEL_2']
         windows = extension.header['WINDOWS']
 
-        if windows != 'SAMPLE':
+        if windows not in window_types:
             raise NotImplementedError("Have not yet coded window functions for angular bins")
 
         #Now load the data
@@ -179,7 +186,15 @@ class SpectrumMeasurement(object):
         header['QUANT2'] = self.type2.value
         header['KERNEL_1'] = self.kernel1
         header['KERNEL_2'] = self.kernel2
-        header['WINDOWS'] = 'SAMPLE' #NOT YET CODED ANYTHING ELSE
+        header['WINDOWS'] = self.windows #NOT YET CODED ANYTHING ELSE
+        header['N_ZBIN_1'] = len(np.unique(self.bin1))
+        header['N_ZBIN_2'] = len(np.unique(self.bin2))
+        if self.metadata is not None:
+            #Check metadata doesn't share any keys with the stuff that's already in the header
+            assert set(self.metadata.keys()).isdisjoint(header.keys())
+            for key,val in self.metadata.iteritems():
+                header[key]=val
+        header['N_ANG']=len(np.unique(self.angular_bin))
 
         columns = [
             fits.Column(name='BIN1', array=self.bin1, format='K'),
@@ -188,8 +203,10 @@ class SpectrumMeasurement(object):
             fits.Column(name='VALUE', array=self.value, format='D'),
         ]
         if self.angle is not None:
-            columns.append(fits.Column(name='ANG', array=self.angle, format='D'))
-
+            if self.windows=="SAMPLE":
+                columns.append(fits.Column(name='ANG', array=self.angle, format='D'))
+            if self.windows=="CLBP":
+                columns.append(fits.Column(name='ANG', array=self.angle, format='2K'))
         extension = fits.BinTableHDU.from_columns(columns, header=header)
         return extension
 
@@ -197,12 +214,16 @@ class SpectrumMeasurement(object):
 
 class CovarianceMatrixInfo(object):
     """Encapsulate a covariance matrix and indices in it"""
-    def __init__(self, name, names, starts, lengths, covmat):
+    def __init__(self, name, names, lengths, covmat):
         super(CovarianceMatrixInfo, self).__init__()
         self.name = name
         self.names = names
-        self.starts = starts
         self.lengths = lengths
+        self.starts=[0]
+        for i,l in enumerate(self.lengths[:-1]):
+            self.starts.append(l+self.starts[i])
+        print self.lengths
+        print self.starts
         self.covmat = covmat
         self.diagonal = covmat.diagonal()
 
@@ -239,15 +260,18 @@ class CovarianceMatrixInfo(object):
             start_index_card = 'STRT_{}'.format(i)
             start_indices.append(header[start_index_card])
             i+=1
-
         lengths = []
         current_length = 0
-        for start, end in zip(start_indices[:-1], start_indices[1:]):
-            lengths.append(end-start)
-        if start_indices:
-            lengths.append(covmat.shape[0]-lengths[-1])
+        #this only works if more than one spectrum
+        if len(start_indices)>1:
+            for start, end in zip(start_indices[:-1], start_indices[1:]):
+                lengths.append(end-start)
+            if start_indices:
+                lengths.append(covmat.shape[0]-lengths[-1])
+        else:
+            lengths.append(covmat.shape[0])
 
-        return cls(cov_name, measurement_names, start_indices, lengths, covmat)
+        return cls(cov_name, measurement_names, lengths, covmat)
 
 
 
@@ -343,12 +367,13 @@ class TwoPointFile(object):
             hdus.append(self.covmat_info.to_fits())
 
         for spectrum in self.spectra:
-            if spectrum.windows!="SAMPLE":
+            if spectrum.windows not in window_types:
                 raise NotImplementedError("Sorry - not yet coded general case with ell/theta window functions")
             hdus.append(spectrum.to_fits())
 
-        for kernel in self.kernels.values():
-            hdus.append(kernel.to_fits())
+        if self.kernels is not None:
+            for kernel in self.kernels:
+                hdus.append(kernel.to_fits())
 
         hdulist = fits.HDUList(hdus)
         hdulist.writeto(filename, clobber=clobber)
@@ -395,7 +420,7 @@ class TwoPointFile(object):
         #If the spectra required it (according to the header) then we also
         #need to load those in.
         for spectrum in spectra:
-            if spectrum.windows!="SAMPLE" and spectrum.windows not in windows:
+            if spectrum.windows not in window_types and spectrum.windows not in windows:
                 windows[spectrum.windows] = cls._windows_from_fits(fitsfile[windows])
 
         #return a new TwoPointFile object with the data we have just loaded
@@ -407,10 +432,3 @@ class TwoPointFile(object):
     @classmethod
     def _windows_from_fits(cls, extension):
         raise NotImplementedError("non-sample window functions in ell/theta")
-
-
-
-
-
-
-
