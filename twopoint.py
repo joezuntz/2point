@@ -7,9 +7,15 @@ import numpy as np
 TWOPOINT_SENTINEL = "2PTDATA"
 NZ_SENTINEL = "NZDATA"
 COV_SENTINEL = "COVDATA"
-
 window_types=["SAMPLE","CLBP"]
 
+#Please do not add things to this list
+ANGULAR_UNITS=[
+    "arcsec",
+    "arcmin",
+    "rad",
+    "deg",
+]
 
 class Types(Enum):
     """
@@ -105,7 +111,8 @@ class NumberDensity(object):
 
 
 class SpectrumMeasurement(object):
-    def __init__(self, name, bins, types, kernels, windows, angular_bin, value, angle=None, error=None, metadata=None):
+    def __init__(self, name, bins, types, kernels, windows, angular_bin, value, 
+        angle=None, error=None, angle_unit=None, metadata=None):
         """metadata is a dictionary which will get added to the fits header"""
         self.name = name
         self.bin1, self.bin2 = bins
@@ -120,6 +127,11 @@ class SpectrumMeasurement(object):
             raise TypeError("window type %s not recognised"%windows)
         self.error = error
         self.metadata = metadata
+        if self.type1.value.endswith("R"):
+            #angle is real
+            msg = "Files with real-space units must specify units as one of: {}".format(ANGULAR_UNITS)
+            assert angle_unit in ANGULAR_UNITS,  msg
+        self.angle_unit = angle_unit
 
     def mask(self, mask):
         self.bin1 = self.bin1[mask]
@@ -144,7 +156,6 @@ class SpectrumMeasurement(object):
         w = (self.bin1==bin1) & (self.bin2==bin2)
         return self.error[w]
 
-
     @classmethod
     def from_fits(cls, extension, covmat_info=None):
         name=extension.name
@@ -167,7 +178,16 @@ class SpectrumMeasurement(object):
         bin2 = data['BIN2']
         angular_bin = data['ANGBIN']
         value = data['VALUE']
-        angle = data['ANG'] if 'ANG' in data.names else None
+        if "ANG" in data.names:
+            angle = data['ANG']
+            ang_index = data.names.index("ANG")
+            angle_unit= extension.header.get('TUNIT{}'.format(ang_index+1))
+            if angle_unit is not None:
+                angle_unit = angle_unit.strip()
+        else:
+            angle = None
+            angle_unit = None
+
 
         #Load a chunk of the covariance matrix too if present.
         if covmat_info is None:
@@ -176,7 +196,7 @@ class SpectrumMeasurement(object):
             error = covmat_info.get_error(name)
 
         return SpectrumMeasurement(name, (bin1, bin2), (type1, type2), (kernel1, kernel2), windows,
-            angular_bin, value, angle, error)
+            angular_bin, value, angle, error, angle_unit=angle_unit)
 
     def to_fits(self):
         header = fits.Header()
@@ -204,9 +224,10 @@ class SpectrumMeasurement(object):
         ]
         if self.angle is not None:
             if self.windows=="SAMPLE":
-                columns.append(fits.Column(name='ANG', array=self.angle, format='D'))
+                columns.append(fits.Column(name='ANG', array=self.angle, format='D', unit=self.angle_unit))
             if self.windows=="CLBP":
-                columns.append(fits.Column(name='ANG', array=self.angle, format='2K'))
+                columns.append(fits.Column(name='ANG', array=self.angle, format='2K',unit=self.angle_unit))
+
         extension = fits.BinTableHDU.from_columns(columns, header=header)
         return extension
 
