@@ -314,10 +314,9 @@ class CovarianceMatrixInfo(object):
             for start, end in zip(start_indices[:-1], start_indices[1:]):
                 lengths.append(end-start)
             if start_indices:
-                lengths.append(covmat.shape[0]-lengths[-1])
+                lengths.append(covmat.shape[0]-start_indices[-1])
         else:
             lengths.append(covmat.shape[0])
-
         return cls(cov_name, measurement_names, lengths, covmat)
 
 
@@ -418,16 +417,23 @@ class TwoPointFile(object):
             self.covmat = self.covmat[mask,:][:,mask]
 
     def get_cov_start(self):
+
         #This gets the covariance array in the right order (before any scale cuts etc.)
+        cov = self.covmat_info.covmat
+        if self.covmat_info.names==[spec.name for spec in self.spectra]:
+            #Ordering is already ok
+            return cov
+        print "Covariance matrix is not in the same order as the 2pt measurement extensions...doing some damn fiddly"
+        print "re-ordering, if I screw it up it's your fault for not putting your covariance in the right order"
         cov_starts = self.covmat_info.starts
         cov_lengths = self.covmat_info.lengths
         cov_names = self.covmat_info.names
-        cov_starts,cov_ends=[0],[cov_lengths[0]]
+        cov_ends=[cov_lengths[0]]
         for i in range(len(cov_names)-1):
             cov_ends.append(cov_ends[i]+cov_lengths[i+1])
-        print 'cov_lengths',cov_lengths
-        print 'cov_starts',cov_starts
-        print 'cov_ends',cov_ends
+        #print 'cov_lengths',cov_lengths
+        #print 'cov_starts',cov_starts
+        #print 'cov_ends',cov_ends
         assert cov_ends[-1]==cov.shape[0]
 
         total_l=0
@@ -438,8 +444,8 @@ class TwoPointFile(object):
             total_l+=cov_lengths[cov_names.index(spectrum.name)]
         cov_out=np.zeros((total_l,total_l))
         start_i=0
-        print spec_names
-        print spec_inds
+        #print spec_names
+        #print spec_inds
 
         for ti,ind_i in zip(spec_names,spec_inds):
             start_j=0
