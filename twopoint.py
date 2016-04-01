@@ -306,7 +306,8 @@ class TwoPointFile(object):
         self.windows = windows
         self.covmat_info = covmat_info
         if covmat_info:
-            self.covmat = covmat_info.covmat
+            #self.covmat = covmat_info.covmat
+            self.covmat = self.get_cov_start()
         else:
             self.covmat = None
 
@@ -328,7 +329,6 @@ class TwoPointFile(object):
         if self.covmat is not None:
             mask = np.concatenate(masks)
             self.covmat = self.covmat[mask, :][:, mask]
-
 
     def mask_bad(self, bad_value):
         "Go through all the spectra masking out data where they are equal to bad_value"
@@ -380,6 +380,38 @@ class TwoPointFile(object):
         if self.covmat is not None:
             mask = np.concatenate(mask)
             self.covmat = self.covmat[mask,:][:,mask]
+
+    def get_cov_start(self):
+        #This gets the covariance array in the right order (before any scale cuts etc.)
+        cov_starts = self.covmat_info.starts
+        cov_lengths = self.covmat_info.lengths
+        cov_names = self.covmat_info.names
+        cov_starts,cov_ends=[0],[cov_lengths[0]]
+        for i in range(len(cov_names)-1):
+            cov_ends.append(cov_ends[i]+cov_lengths[i+1])
+        print 'cov_lengths',cov_lengths
+        print 'cov_starts',cov_starts
+        print 'cov_ends',cov_ends
+        assert cov_ends[-1]==cov.shape[0]
+
+        total_l=0
+        spec_inds=[]
+        spec_names = [spec.name for spec in self.spectra]
+        for spectrum in self.spectra:
+            spec_inds.append(cov_names.index(spectrum.name))
+            total_l+=cov_lengths[cov_names.index(spectrum.name)]
+        cov_out=np.zeros((total_l,total_l))
+        start_i=0
+        print spec_names
+        print spec_inds
+
+        for ti,ind_i in zip(spec_names,spec_inds):
+            start_j=0
+            for tj,ind_j in zip(spec_names,spec_inds):
+                cov_out[start_i:start_i+cov_lengths[ind_i],start_j:start_j+cov_lengths[ind_j]]=cov[cov_starts[ind_i]:cov_ends[ind_i],cov_starts[ind_j]:cov_ends[ind_j]]
+                start_j+=cov_lengths[ind_j]
+            start_i+=cov_lengths[ind_i]
+        return cov_out
 
     def to_fits(self, filename, clobber=False):
         hdus = [fits.PrimaryHDU()]
