@@ -1,4 +1,5 @@
 from astropy.io import fits
+import astropy.units
 from astropy.table import Table
 from enum34 import Enum
 import numpy as np
@@ -9,13 +10,18 @@ NZ_SENTINEL = "NZDATA"
 COV_SENTINEL = "COVDATA"
 window_types=["SAMPLE","CLBP"]
 
+
+
 #Please do not add things to this list
-ANGULAR_UNITS=[
-    "arcsec",
-    "arcmin",
-    "rad",
-    "deg",
+ANGULAR_UNIT_TYPES=[
+    astropy.units.arcsec,
+    astropy.units.arcmin,
+    astropy.units.rad,
+    astropy.units.deg,
 ]
+ANGULAR_UNITS={unit.name:unit for unit in ANGULAR_UNIT_TYPES}
+
+
 
 class Types(Enum):
     """
@@ -127,11 +133,29 @@ class SpectrumMeasurement(object):
             raise TypeError("window type %s not recognised"%windows)
         self.error = error
         self.metadata = metadata
-        if self.type1.value.endswith("R"):
+        if self.is_real_space():
             #angle is real
-            msg = "Files with real-space units must specify units as one of: {}".format(ANGULAR_UNITS)
+            msg = "Files with real-space units must specify units as one of: {}".format(ANGULAR_UNITS.keys())
             assert angle_unit in ANGULAR_UNITS,  msg
         self.angle_unit = angle_unit
+
+    def is_real_space(self):
+        return self.type1.value.endswith("R") or self.type2.value.endswith("R")
+
+    def convert_angular_units(self, unit):
+        if not self.is_real_space():
+            raise ValueError("Two point spectrum has no units to convert; it is in Fourier space")
+
+        if self.windows not in ["SAMPLE", "CLBP"]:
+            raise NotImplementedError("Need to write code to transform window function units")
+        old_unit = ANGULAR_UNITS[self.angle_unit]
+        new_unit = ANGULAR_UNITS[unit]
+
+        print "Converting units from {} -> {} (factor {})".format(old_unit, new_unit, old_unit.to(new_unit))
+        angle_with_units = self.angle*old_unit
+        self.angle = angle_with_units.to(new_unit).value
+        self.angle_unit = unit
+
 
     def mask(self, mask):
         self.bin1 = self.bin1[mask]
@@ -139,6 +163,10 @@ class SpectrumMeasurement(object):
         self.angular_bin = self.angular_bin[mask]
         self.angle = self.angle[mask]
         self.value = self.value[mask]
+
+    def auto_bins(self):
+        return self.bin1==self.bin2
+
 
     def __len__(self):
         return len(self.value)
@@ -243,8 +271,6 @@ class CovarianceMatrixInfo(object):
         self.starts=[0]
         for i,l in enumerate(self.lengths[:-1]):
             self.starts.append(l+self.starts[i])
-        print self.lengths
-        print self.starts
         self.covmat = covmat
         self.diagonal = covmat.diagonal()
 
@@ -340,6 +366,16 @@ class TwoPointFile(object):
             spectrum.mask(mask)
             print "Masking {} values in {}".format(mask.size-mask.sum(), spectrum.name)
             #record the mask vector as we will need it to mask the covmat
+            masks.append(mask)
+        if masks:
+            self._mask_covmat(masks)
+
+    def mask_cross(self):
+        masks = []
+        for spectrum in self.spectra:
+            mask = spectrum.auto_bins()
+            spectrum.mask(mask)
+            print "Masking {} cross-values in {}".format(mask.size-mask.sum(), spectrum.name)
             masks.append(mask)
         if masks:
             self._mask_covmat(masks)
