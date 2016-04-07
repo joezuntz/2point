@@ -122,6 +122,7 @@ class SpectrumMeasurement(object):
         """metadata is a dictionary which will get added to the fits header"""
         self.name = name
         self.bin1, self.bin2 = bins
+        self.bin_pairs = self.get_bin_pairs()  #unique bin pairs
         self.type1, self.type2 = types
         self.kernel1, self.kernel2 = kernels
         self.angular_bin = angular_bin
@@ -139,6 +140,14 @@ class SpectrumMeasurement(object):
             assert angle_unit in ANGULAR_UNITS,  msg
         self.angle_unit = angle_unit
 
+    def get_bin_pairs(self):
+        all_pairs = zip(self.bin1,self.bin2)
+        unique_pairs=[]
+        for p in all_pairs:
+            if p not in unique_pairs:
+                unique_pairs.append(p)
+        return unique_pairs
+
     def is_real_space(self):
         return self.type1.value.endswith("R") or self.type2.value.endswith("R")
 
@@ -151,13 +160,15 @@ class SpectrumMeasurement(object):
         old_unit = ANGULAR_UNITS[self.angle_unit]
         new_unit = ANGULAR_UNITS[unit]
 
-        print "Converting units from {} -> {} (factor {})".format(old_unit, new_unit, old_unit.to(new_unit))
+        print "Converting angle units of {} from {} -> {} (factor {})".format(
+            self.name,old_unit, new_unit, old_unit.to(new_unit))
         angle_with_units = self.angle*old_unit
         self.angle = angle_with_units.to(new_unit).value
         self.angle_unit = unit
 
 
-    def mask(self, mask):
+    def apply_mask(self, mask):
+        """mask is a boolean array which True for elements to be kept"""
         self.bin1 = self.bin1[mask]
         self.bin2 = self.bin2[mask]
         self.angular_bin = self.angular_bin[mask]
@@ -177,6 +188,10 @@ class SpectrumMeasurement(object):
     def get_pair(self, bin1, bin2):
         w = (self.bin1==bin1) & (self.bin2==bin2)
         return self.angle[w], self.value[w]
+
+    def get_pair_mask(self, bin1, bin2):
+        w = (self.bin1==bin1) & (self.bin2==bin2)
+        return w
 
     def get_error(self, bin1, bin2):
         if self.error is None:
@@ -362,7 +377,7 @@ class TwoPointFile(object):
         for spectrum in self.spectra:
             #nb this will not work for NaN!
             mask = (spectrum.value != bad_value) 
-            spectrum.mask(mask)
+            spectrum.apply_mask(mask)
             print "Masking {} values in {}".format(mask.size-mask.sum(), spectrum.name)
             #record the mask vector as we will need it to mask the covmat
             masks.append(mask)
@@ -373,13 +388,44 @@ class TwoPointFile(object):
         masks = []
         for spectrum in self.spectra:
             mask = spectrum.auto_bins()
-            spectrum.mask(mask)
+            spectrum.apply_mask(mask)
             print "Masking {} cross-values in {}".format(mask.size-mask.sum(), spectrum.name)
             masks.append(mask)
         if masks:
             self._mask_covmat(masks)
 
-
+    def mask_scales(self, ang_mins_all_spec, ang_maxs_all_spec):
+        masks=[]
+        for ang_mins,ang_maxs,spectrum in zip(ang_mins_all_spec,ang_maxs_all_spec,self.spectra):
+            mask=np.ones(len(spectrum.bin1), dtype='bool')
+            if (ang_mins is None) and (ang_maxs is None):
+                print "No scale cuts for %s"%spectrum.name
+                masks.append(mask)
+                continue
+            print "*******************************"
+            print "Doing scale cuts for %s"%spectrum.name
+            if ang_mins is not None:
+                assert len(ang_mins) == len(spectrum.bin_pairs)
+            else:
+                ang_mins=[0.]*len(spectrum.bin_pairs)
+            if ang_maxs is not None:
+                assert len(ang_maxs) == len(spectrum.bin_pairs)
+            else:
+                ang_maxs=[np.inf]*len(spectrum.bin_pairs)
+            for bin_pair,ang_min,ang_max in zip(spectrum.bin_pairs,ang_mins,ang_maxs):
+                pair_inds=np.where(spectrum.get_pair_mask(bin_pair[0],bin_pair[1]))[0]
+                print "For bin pair (%d,%d), using angles between %f and %f"%(bin_pair[0],bin_pair[1],ang_min,ang_max)
+                angles=spectrum.angle[pair_inds]
+                cut=(angles<ang_min) | (angles>ang_max)
+                mask[pair_inds[cut]]=False
+                print 'cutting angles:',angles[cut]
+            print "********************************"
+            spectrum.apply_mask(mask)
+            masks.append(mask)
+        if masks:
+            self._mask_covmat(masks)
+            
+            
     def mask_scale(self, spectra_to_cut, min_scale=-np.inf, max_scale=np.inf):
         masks = []
         #go through the spectra and covmat, masking out the bad values.
@@ -388,7 +434,7 @@ class TwoPointFile(object):
                 continue
             #nb this will not work for NaN!
             mask = (spectrum.angle > min_scale) & (spectrum.angle < max_scale) 
-            spectrum.mask(mask)            
+            spectrum.apply_mask(mask)            
             print "Masking {} values in {} because they had ell or theta outside ({},{})".format(mask.size-mask.sum(), spectrum.name, min_scale, max_scale)
             #record the mask vector as we will need it to mask the covmat
             masks.append(mask)
