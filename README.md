@@ -29,12 +29,14 @@ Three-letter quantity codes are used in the format described here to define more
 For example, the code GPF would represent Galaxy position C_ell values: the G stands for galaxy, the P for position, and the F for Fourier.  A collection of other values are defined here, but more will be added as we progress.  Not all possible combinations are valid.
 
 First letter:
+
     G : Galaxy
     C : CMB
     L : Clusters
     P : Point-spread function
 
 Second letter:
+
     E : E-mode, for polarization (for C) or shear (for G)
     B : B-mode
     K : convergence
@@ -42,6 +44,7 @@ Second letter:
     - : For xi_-(theta)
 
 Third letter:
+
     F : Fourier space, such as C_ell
     R : For real space such as correlation functions
     C : For COSEBIS (?)
@@ -69,17 +72,20 @@ The extension must contain the following parameters in its header:
     BLINDED  = F          // This is blinded data
 
 For many 2-point data sets (but not, for example, CMB ones), the extension must also contain these header parameters:
+
   KERNEL_1 = NZ_SOURCE  // The n(z) data set for quantity 1.  This is a reference to an NZDATA file elsewhere in the fits file
   KERNEL_2 = NZ_SOURCE
 
 
 The extension must then contain these data columns:
+
     BIN1   8-byte integer  // Integer, the index of the first bin
     BIN2   8-byte integer  // Integer, the index of the second bin
     ANGBIN 8-byte integer  // The angular bin index
     VALUE  8-byte real     // The data value for this combination.
 
 Optionally, it can also contain this column:
+
     ANG    8-byte real
 
 
@@ -101,6 +107,7 @@ The extension must contain the following parameters in its header:
     NZ      = 100        // Integer number of histogram bins
 
 The extension must then contain these data columns:
+
     Z_LOW   8-byte real  // Real, the z value for the lower end of each redshift histogram bin
     Z_MID   8-byte real  // Real, the z value for a middle point of each redshift histogram bin
     Z_HIGH  8-byte real  // Real, the z value for the upper end of each redshift histogram bin
