@@ -119,8 +119,8 @@ Although the ordering of the points can be derived from the order of the data in
 
 The header must contain these keys:
 
-   COVDATA =       True     // Sentinel for covariance matrix
-   EXTNAME =     COVMAT     // Name of this covariance matrix
+    COVDATA =       True     // Sentinel for covariance matrix
+    EXTNAME =     COVMAT     // Name of this covariance matrix
     NAME_0 = 'SHEAR_SHEAR'  // Name of the 2PTDAT extension of the first chunk of covmat
     STRT_0 =          0     // Integer, starting position of the first data set stored here
     LEN_0  =        300     // Integer, length of the first data set stored here
