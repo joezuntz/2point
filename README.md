@@ -73,8 +73,8 @@ The extension must contain the following parameters in its header:
 
 For many 2-point data sets (but not, for example, CMB ones), the extension must also contain these header parameters:
 
-  KERNEL_1 = NZ_SOURCE  // The n(z) data set for quantity 1.  This is a reference to an NZDATA file elsewhere in the fits file
-  KERNEL_2 = NZ_SOURCE
+    KERNEL_1 = NZ_SOURCE  // The n(z) data set for quantity 1.  This is a reference to an NZDATA file elsewhere in the fits file
+    KERNEL_2 = NZ_SOURCE
 
 
 The extension must then contain these data columns:
