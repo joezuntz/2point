@@ -394,34 +394,36 @@ class TwoPointFile(object):
         if masks:
             self._mask_covmat(masks)
 
-    def mask_scales(self, ang_mins_all_spec, ang_maxs_all_spec):
+    def mask_scales(self, cuts={}, bin_cuts=[]):
         masks=[]
-        for ang_mins,ang_maxs,spectrum in zip(ang_mins_all_spec,ang_maxs_all_spec,self.spectra):
-            mask=np.ones(len(spectrum.bin1), dtype='bool')
-            if (ang_mins is None) and (ang_maxs is None):
-                print "No scale cuts for %s"%spectrum.name
-                masks.append(mask)
-                continue
-            print "*******************************"
-            print "Doing scale cuts for %s"%spectrum.name
-            if ang_mins is not None:
-                assert len(ang_mins) == len(spectrum.bin_pairs)
-            else:
-                ang_mins=[0.]*len(spectrum.bin_pairs)
-            if ang_maxs is not None:
-                assert len(ang_maxs) == len(spectrum.bin_pairs)
-            else:
-                ang_maxs=[np.inf]*len(spectrum.bin_pairs)
-            for bin_pair,ang_min,ang_max in zip(spectrum.bin_pairs,ang_mins,ang_maxs):
-                pair_inds=np.where(spectrum.get_pair_mask(bin_pair[0],bin_pair[1]))[0]
-                print "For bin pair (%d,%d), using angles between %f and %f"%(bin_pair[0],bin_pair[1],ang_min,ang_max)
-                angles=spectrum.angle[pair_inds]
-                cut=(angles<ang_min) | (angles>ang_max)
-                mask[pair_inds[cut]]=False
-                print 'cutting angles:',angles[cut]
-            print "********************************"
-            spectrum.apply_mask(mask)
+        print
+        for spectrum in self.spectra:
+            mask = np.ones(len(spectrum), dtype=bool)
+            for b1,b2 in spectrum.bin_pairs:
+                w_full = np.where((spectrum.bin1==b1) & (spectrum.bin2==b2))[0]
+                if (spectrum.name, b1, b2) in bin_cuts:
+                    print "Removing {} bin ({},{}) altogether.".format(spectrum.name, b1, b2)
+                    mask[w_full] = False
+                    continue
+
+                cut = cuts.get((spectrum.name,b1,b2))
+                if cut is None:
+                    print "No cut specified for {} bin ({},{})".format(spectrum.name, b1, b2)
+                    continue
+
+                #Actually do the cut
+                ang_min, ang_max = cut
+                w = np.where((spectrum.bin1==b1) & (spectrum.bin2==b2) & 
+                    ((spectrum.angle<ang_min) | (spectrum.angle>ang_max) ) )[0]
+                
+                print "Cutting {} bin pair ({},{}) to angle range ({} - {}) : this removes {} values out of {}".format(
+                    spectrum.name, b1, b2, ang_min, ang_max, len(w), len(w_full))
+
+                mask[w] = False
             masks.append(mask)
+            spectrum.apply_mask(mask)
+            print
+
         if masks:
             self._mask_covmat(masks)
             
