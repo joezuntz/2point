@@ -393,7 +393,14 @@ class TwoPointFile(object):
             return spectra[0]
 
     def get_kernel(self, name):
-        return self.kernels[name]
+        spectra = [kernel for kernels in self.kernels if kernel.name==name]
+        n = len(kernel)
+        if n==0:
+            raise ValueError("Kernel with name %s not found in file"%name)
+        elif n>1:
+            raise ValueError("Multiple kernel with name %s found in file"%name)
+        else:
+            return kernels[0]
 
     def _mask_covmat(self, masks):
         #Also cut down the covariance matrix accordingly
