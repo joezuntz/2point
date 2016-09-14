@@ -394,7 +394,7 @@ class TwoPointFile(object):
 
     def get_kernel(self, name):
         kernels = [kernel for kernels in self.kernels if kernel.name==name]
-        n = len(kernel)
+        n = len(kernels)
         if n==0:
             raise ValueError("Kernel with name %s not found in file"%name)
         elif n>1:
