@@ -393,7 +393,7 @@ class TwoPointFile(object):
             return spectra[0]
 
     def get_kernel(self, name):
-        spectra = [kernel for kernels in self.kernels if kernel.name==name]
+        kernels = [kernel for kernels in self.kernels if kernel.name==name]
         n = len(kernel)
         if n==0:
             raise ValueError("Kernel with name %s not found in file"%name)
