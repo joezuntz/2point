@@ -393,7 +393,7 @@ class TwoPointFile(object):
             return spectra[0]
 
     def get_kernel(self, name):
-        kernels = [kernel for kernels in self.kernels if kernel.name==name]
+        kernels = [kernel for kernel in self.kernels if kernel.name==name]
         n = len(kernels)
         if n==0:
             raise ValueError("Kernel with name %s not found in file"%name)
@@ -591,12 +591,9 @@ class TwoPointFile(object):
         #Each spectrum needs kernels, usually some n(z).
         #These were read from headers when we loaded the 2pt data above above.
         #Now we are loading those kernels into a dictionary
-        known_kernels = []
-        for spectrum in spectra:
-            for kernel in (spectrum.kernel1, spectrum.kernel2):
-                if kernel not in known_kernels:
-                    kernels.append(NumberDensity.from_fits(fitsfile[kernel]))
-                    known_kernels.append(kernel)
+        for extension in fitsfile:
+            if extension.header.get(NZ_SENTINEL):
+                kernels.append(NumberDensity.from_fits(extension))
 
         #We might also require window functions W(ell) or W(theta). It's also possible
         #that we just use a single sample value of ell or theta instead.
