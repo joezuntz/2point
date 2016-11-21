@@ -11,7 +11,6 @@ COV_SENTINEL = "COVDATA"
 window_types=["SAMPLE","CLBP"]
 
 
-
 #Please do not add things to this list
 ANGULAR_UNIT_TYPES=[
     astropy.units.arcsec,
@@ -386,12 +385,12 @@ class CovarianceMatrixInfo(object):
         return cls(cov_name, measurement_names, lengths, covmat)
 
     @classmethod
-    def from_spec_lists(cls, spec_lists, cov_name):
+    def from_spec_lists(cls, spec_lists, cov_name, mode='full'):
         """Often the covariance will be computed by measuring the statistic(s) in question
         on many simulated realisations of the dataset. This function takes a list of such 
         measurements, *each one a list SpectrumMeasurement objects*, computes the mean and covariance, and
         returns the mean as a list of SpectrumMeasurements, and the covariance as a CovarianceMatrixInfo
-        object"""
+        object. mode should be one of full, subsample or jackknife"""
         #first check that spec_lists is a list of lists, and that there are at least 2
         print 'spec_lists',spec_lists
         try:
@@ -419,7 +418,7 @@ class CovarianceMatrixInfo(object):
         
         #Now compute covariance
         spec_arrays=np.array(spec_arrays)
-        cov_values,_ = sample_cov(spec_arrays)
+        cov_values,_ = sample_cov(spec_arrays, mode=mode)
         mean_spec_values = np.mean(spec_arrays, axis=0)
 
         #make list of mean 2pt specs by copying spec_lists[0] and replacing value column
@@ -535,14 +534,16 @@ class TwoPointFile(object):
         masks = []
         #go through the spectra and covmat, masking out the bad values.
         for spectrum in self.spectra:
+            mask = np.ones(len(spectrum.value),dtype=bool)
             if (spectra_to_cut!="all") and (spectrum.name not in spectra_to_cut):
-                continue
-            #nb this will not work for NaN!
-            mask = (spectrum.angle > min_scale) & (spectrum.angle < max_scale) 
-            spectrum.apply_mask(mask)            
-            print "Masking {} values in {} because they had ell or theta outside ({},{})".format(mask.size-mask.sum(), spectrum.name, min_scale, max_scale)
-            #record the mask vector as we will need it to mask the covmat
-            masks.append(mask)
+                masks.append(mask)
+            else:
+                #nb this will not work for NaN!
+                mask = (spectrum.angle > min_scale) & (spectrum.angle < max_scale) 
+                spectrum.apply_mask(mask)            
+                print "Masking {} values in {} because they had ell or theta outside ({},{})".format(mask.size-mask.sum(), spectrum.name, min_scale, max_scale)
+                #record the mask vector as we will need it to mask the covmat
+                masks.append(mask)
 
         if masks:
             self._mask_covmat(masks)
