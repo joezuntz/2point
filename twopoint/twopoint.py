@@ -443,6 +443,8 @@ class TwoPointFile(object):
         if covmat_info:
             #self.covmat = covmat_info.covmat
             self.covmat = self.get_cov_start()
+            for s in self.spectra:
+                s.error = self.covmat_info.get_error(s.name)
         else:
             self.covmat = None
 
