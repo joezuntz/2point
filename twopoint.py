@@ -190,6 +190,11 @@ class SpectrumMeasurement(object):
             assert angle_unit in ANGULAR_UNITS,  msg
         self.angle_unit = angle_unit
 
+    def __str__(self):
+        return "<Spectrum: {}>".format(self.name)
+    def __repr__(self):
+        return "<Spectrum: {}>".format(self.name)
+
     def get_bin_pairs(self):
         all_pairs = zip(self.bin1,self.bin2)
         unique_pairs=[]
@@ -445,6 +450,7 @@ class TwoPointFile(object):
             self.covmat = self.get_cov_start()
         else:
             self.covmat = None
+        self._spectrum_index = None
 
     def get_spectrum(self, name):
         spectra = [spectrum for spectrum in self.spectra if spectrum.name==name]
@@ -465,6 +471,24 @@ class TwoPointFile(object):
             raise ValueError("Multiple kernel with name %s found in file"%name)
         else:
             return kernels[0]
+
+    def _build_spectrum_index(self):
+        index = 0
+        self._spectrum_index = {}
+        for spectrum in self.spectra:
+            name = spectrum.name
+            bin1 = spectrum.bin1
+            bin2 = spectrum.bin2
+            angbin = spectrum.angular_bin
+            n = len(bin1)
+            for i in xrange(n):
+                self._spectrum_index[(name, bin1[i], bin2[i], angbin[i])] = index
+                index += 1
+
+    def get_overall_index(self, spectrum_name, bin1, bin2, angbin):
+        if self._spectrum_index is None:
+            self._build_spectrum_index()
+        return self._spectrum_index[(spectrum_name, bin1, bin2, angbin)]
 
     def _mask_covmat(self, masks):
         #Also cut down the covariance matrix accordingly
@@ -678,3 +702,122 @@ class TwoPointFile(object):
     @classmethod
     def _windows_from_fits(cls, extension):
         raise NotImplementedError("non-sample window functions in ell/theta")
+
+
+
+
+class SpectrumCovarianceBuilder(object):
+    """
+    This class helps you ensure that the ordering between a set of data points and 
+    their covariance is consistently maintained.  You add data points to it one by one.,
+    in the order that they appear in the covariance.
+
+    Here is an example using ther CFHTLenS revisited files:
+
+    >>> theta_values = [1.41, 2.79, 5.53, 11.0, 21.7, 43.0, 85.2]
+    >>> types = {
+        'xip': twopoint.Types.galaxy_shear_plus_real,
+        'xim': twopoint.Types.galaxy_shear_minus_real,
+    }
+    >>> kernel='NZ_SOURCE'
+    >>> builder = twopoint.SpectrumCovarianceBuilder()
+    >>> i_bin, data, jk_err, sim_err = np.loadtxt("./xipm_cfhtlens_regcomb_blind1_passfields_athenazsj.dat").T
+    >>> i = 0
+    >>> for bin1 in xrange(7):
+        for bin2 in xrange(bin1,7):
+            for name in ['xip', 'xim']:
+                stype = types[name]
+                for angbin in xrange(1,8):
+                    ang = theta_values[angbin-1]
+                    value = data[i]
+                    i+=1
+                    builder.add_data_point(kernel,kernel,stype,stype,bin1+1,bin2+1,ang,angbin,value)
+    >>> names = {builder.types[0]:"xip", builder.types[1]:"xim"}
+    >>> builder.set_names(names)
+    >>> spectra, covmat_info = builder.generate(covmat,"arcmin")
+    """
+    def __init__(self):
+        self.kernel1 = []
+        self.kernel2 = []
+        self.bin1 = []
+        self.bin2 = []
+        self.type1 = []
+        self.type2 = []
+        self.ang = []
+        self.angbin = []
+        self.value = []
+        self.names = None
+        self.types = []
+        self.total_length = 0
+
+    def add_data_point(self, kernel1, kernel2, type1, type2, bin1, bin2, ang, angbin, value):
+        self.kernel1.append(kernel1)
+        self.kernel2.append(kernel2)
+        self.type1.append(type1)
+        self.type2.append(type2)
+        self.bin1.append(bin1)
+        self.bin2.append(bin2)
+        self.ang.append(ang)
+        self.angbin.append(angbin)
+        self.value.append(value)
+        self.total_length += 1
+
+        spec  = kernel1,kernel2,type1,type2
+        if spec not in self.types:
+            self.types.append(spec)
+
+
+
+    def _freeze(self):
+        self.bin1 = np.array(self.bin1)
+        self.bin2 = np.array(self.bin2)
+        self.ang = np.array(self.ang)
+        self.angbin = np.array(self.angbin)
+        self.value = np.array(self.value)
+    
+
+    def set_names(self, names):
+        for t in self.types:
+            if t not in names:
+                raise ValueError("Please provide name for spectrum of type: {}".format(t))
+        self.names = names
+
+
+    def generate(self, covariance, angle_unit):
+        self._freeze()
+        if self.names is None:
+            raise ValueError("Please provide names for each type in self.types first")
+        assert covariance.shape == (self.total_length,self.total_length)
+        #get all the unique pairs of type1,type2.  maintain order
+        #shouldn't be more than a few types so the list membership test is fast
+        master_index_vector = []
+        spectra = []
+        for kernel1,kernel2,type1,type2 in self.types:
+            kernels = (kernel1,kernel2)
+            types = (type1,type2)
+            spectrum_index_vector = []
+            for i in xrange(self.total_length):
+                k1 = self.kernel1[i]
+                k2 = self.kernel2[i]
+                t1 = self.type1[i]
+                t2 = self.type2[i]
+                if (type1!=t1) or (type2!=t2) or (kernel1!=k1) or (kernel2!=k2):
+                    continue
+                master_index_vector.append(i)
+                spectrum_index_vector.append(i)
+            bins = (self.bin1[spectrum_index_vector], self.bin2[spectrum_index_vector])
+            angular_bin = self.angbin[spectrum_index_vector]
+            value = self.value[spectrum_index_vector]
+            angle=self.ang[spectrum_index_vector]
+            name = self.names[(kernel1,kernel2,type1,type2)]
+            windows = "SAMPLE"
+            spectrum = SpectrumMeasurement(name, bins, types, kernels, windows, angular_bin, value, angle=angle, angle_unit=angle_unit)
+            spectra.append(spectrum)
+
+
+        reordered_covariance = covariance[master_index_vector][:,master_index_vector]
+        covmat_info = CovarianceMatrixInfo("COVMAT", [s.name for s in spectra], [len(s) for s in spectra], reordered_covariance)
+
+
+        return spectra, covmat_info
+
