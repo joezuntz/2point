@@ -206,6 +206,13 @@ class SpectrumMeasurement(object):
     def is_real_space(self):
         return self.type1.value.endswith("R") or self.type2.value.endswith("R")
 
+    def recompute_angular_bins(self):
+        angles = np.unique(self.angle)
+        angles.sort()
+        angles = angles.tolist()
+        angular_bin = [angles.index(ang)+1 for ang in self.angle]
+        self.angular_bin = np.array(angular_bin)
+
     def convert_angular_units(self, unit):
         if not self.is_real_space():
             raise ValueError("Two point spectrum has no units to convert; it is in Fourier space")
@@ -229,6 +236,8 @@ class SpectrumMeasurement(object):
         self.angular_bin = self.angular_bin[mask]
         self.angle = self.angle[mask]
         self.value = self.value[mask]
+        if self.error is not None:
+            self.error = self.error[mask]
 
     def auto_bins(self):
         return self.bin1==self.bin2
@@ -495,6 +504,8 @@ class TwoPointFile(object):
         if self.covmat is not None:
             mask = np.concatenate(masks)
             self.covmat = self.covmat[mask, :][:, mask]
+            self.covmat_info = CovarianceMatrixInfo(self.covmat_info.name, [s.name for s in self.spectra], [len(s) for s in self.spectra], self.covmat)
+        
 
     def mask_bad(self, bad_value):
         "Go through all the spectra masking out data where they are equal to bad_value"
@@ -509,6 +520,25 @@ class TwoPointFile(object):
             masks.append(mask)
         if masks:
             self._mask_covmat(masks)
+
+    def mask_indices(self, spectrum_name, indices):
+        s = self.get_spectrum(spectrum_name)
+        mask_points = np.array(indices)
+        masks = []
+        for s in self.spectra:
+            print "len", len(s)
+            mask = np.ones(len(s), dtype=bool)
+            if s.name == spectrum_name:
+                mask[mask_points] = False
+                s.apply_mask(mask)
+            print "Keeping {} points in {}".format(mask.sum(), s.name)
+            masks.append(mask)
+            print mask_points
+            print mask
+        self._mask_covmat(masks)
+
+
+
 
     def mask_cross(self):
         masks = []
@@ -703,6 +733,44 @@ class TwoPointFile(object):
     def _windows_from_fits(cls, extension):
         raise NotImplementedError("non-sample window functions in ell/theta")
 
+    def plots(self, root, callback=None):
+        import matplotlib.pyplot as plt
+        for spectrum in self.spectra:
+            name = "{}_{}.png".format(root,spectrum.name)
+            pairs = spectrum.bin_pairs
+            n = len(pairs)
+            if n==0:
+                continue
+
+            plt.figure(figsize=(7,5*n))
+            for k,pair in enumerate(pairs):
+                plt.subplot(n,1,k+1)
+                i,j=pair
+                theta, xi = spectrum.get_pair(i,j)
+                error = spectrum.get_error(i,j)
+                plt.errorbar(theta, abs(xi), error, fmt='k.')
+                plt.title("Pair ({},{})".format(i,j))
+                plt.gca().set_xscale('log', nonposx='clip')
+                plt.gca().set_yscale('log', nonposy='clip')
+                plt.ylabel(r"$\theta * \xi / 10^{-4}$")
+                plt.xlabel(r"$\theta$")
+                plt.ylim(1e-6,3e-4)
+            print "Saving {}".format(name)
+            plt.savefig(name)
+            plt.close()
+
+        for kernel in self.kernels:
+            name = "{}_{}.png".format(root,kernel.name)
+            plt.figure()
+            for nz in kernel.nzs:
+                plt.plot(kernel.z, nz)
+            print "Saving {}".format(name)
+            plt.savefig(name)
+            plt.close()
+
+
+
+            
 
 
 
@@ -784,9 +852,9 @@ class SpectrumCovarianceBuilder(object):
 
 
     def generate(self, covariance, angle_unit):
-        self._freeze()
         if self.names is None:
             raise ValueError("Please provide names for each type in self.types first")
+        self._freeze()
         assert covariance.shape == (self.total_length,self.total_length)
         #get all the unique pairs of type1,type2.  maintain order
         #shouldn't be more than a few types so the list membership test is fast
@@ -820,4 +888,15 @@ class SpectrumCovarianceBuilder(object):
 
 
         return spectra, covmat_info
+
+
+
+
+if __name__ == '__main__':
+    import sys
+    filename = sys.argv[1]
+    output_root = sys.argv[2]
+    T = TwoPointFile.from_fits(filename, covmat_name=None)
+    T.plots(output_root)
+
 
