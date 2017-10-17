@@ -222,8 +222,8 @@ class SpectrumMeasurement(object):
         old_unit = ANGULAR_UNITS[self.angle_unit]
         new_unit = ANGULAR_UNITS[unit]
 
-        print "Converting angle units of {} from {} -> {} (factor {})".format(
-            self.name,old_unit, new_unit, old_unit.to(new_unit))
+        print("Converting angle units of {} from {} -> {} (factor {})".format(
+            self.name,old_unit, new_unit, old_unit.to(new_unit)))
         angle_with_units = self.angle*old_unit
         self.angle = angle_with_units.to(new_unit).value
         self.angle_unit = unit
@@ -406,11 +406,11 @@ class CovarianceMatrixInfo(object):
         returns the mean as a list of SpectrumMeasurements, and the covariance as a CovarianceMatrixInfo
         object. mode should be one of full, subsample or jackknife"""
         #first check that spec_lists is a list of lists, and that there are at least 2
-        print 'spec_lists',spec_lists
+        print('spec_lists',spec_lists)
         try:
             spec_lists[1][0]
         except Exception as e:
-            print "spec_lists should be a list of lists with at least two elements"
+            print("spec_lists should be a list of lists with at least two elements")
             raise(e)
             
         #Get measurement names and lengths from first element of spec_lists
@@ -515,7 +515,7 @@ class TwoPointFile(object):
             #nb this will not work for NaN!
             mask = (spectrum.value != bad_value) 
             spectrum.apply_mask(mask)
-            print "Masking {} values in {}".format(mask.size-mask.sum(), spectrum.name)
+            print("Masking {} values in {}".format(mask.size-mask.sum(), spectrum.name))
             #record the mask vector as we will need it to mask the covmat
             masks.append(mask)
         if masks:
@@ -526,15 +526,15 @@ class TwoPointFile(object):
         mask_points = np.array(indices)
         masks = []
         for s in self.spectra:
-            print "len", len(s)
+            print("len", len(s))
             mask = np.ones(len(s), dtype=bool)
             if s.name == spectrum_name:
                 mask[mask_points] = False
                 s.apply_mask(mask)
-            print "Keeping {} points in {}".format(mask.sum(), s.name)
+            print("Keeping {} points in {}".format(mask.sum(), s.name))
             masks.append(mask)
-            print mask_points
-            print mask
+            print(mask_points)
+            print(mask)
         self._mask_covmat(masks)
 
 
@@ -545,26 +545,26 @@ class TwoPointFile(object):
         for spectrum in self.spectra:
             mask = spectrum.auto_bins()
             spectrum.apply_mask(mask)
-            print "Masking {} cross-values in {}".format(mask.size-mask.sum(), spectrum.name)
+            print("Masking {} cross-values in {}".format(mask.size-mask.sum(), spectrum.name))
             masks.append(mask)
         if masks:
             self._mask_covmat(masks)
 
     def mask_scales(self, cuts={}, bin_cuts=[]):
         masks=[]
-        print
+        print("")
         for spectrum in self.spectra:
             mask = np.ones(len(spectrum), dtype=bool)
             for b1,b2 in spectrum.bin_pairs:
                 w_full = np.where((spectrum.bin1==b1) & (spectrum.bin2==b2))[0]
                 if (spectrum.name, b1, b2) in bin_cuts:
-                    print "Removing {} bin ({},{}) altogether.".format(spectrum.name, b1, b2)
+                    print("Removing {} bin ({},{}) altogether.".format(spectrum.name, b1, b2))
                     mask[w_full] = False
                     continue
 
                 cut = cuts.get((spectrum.name,b1,b2))
                 if cut is None:
-                    print "No cut specified for {} bin ({},{})".format(spectrum.name, b1, b2)
+                    print("No cut specified for {} bin ({},{})".format(spectrum.name, b1, b2))
                     continue
 
                 #Actually do the cut
@@ -572,13 +572,13 @@ class TwoPointFile(object):
                 w = np.where((spectrum.bin1==b1) & (spectrum.bin2==b2) & 
                     ((spectrum.angle<ang_min) | (spectrum.angle>ang_max) ) )[0]
                 
-                print "Cutting {} bin pair ({},{}) to angle range ({} - {}) : this removes {} values out of {}".format(
-                    spectrum.name, b1, b2, ang_min, ang_max, len(w), len(w_full))
+                print("Cutting {} bin pair ({},{}) to angle range ({} - {}) : this removes {} values out of {}".format(
+                    spectrum.name, b1, b2, ang_min, ang_max, len(w), len(w_full)))
 
                 mask[w] = False
             masks.append(mask)
             spectrum.apply_mask(mask)
-            print
+            print("")
 
         if masks:
             self._mask_covmat(masks)
@@ -595,7 +595,7 @@ class TwoPointFile(object):
                 #nb this will not work for NaN!
                 mask = (spectrum.angle > min_scale) & (spectrum.angle < max_scale) 
                 spectrum.apply_mask(mask)            
-                print "Masking {} values in {} because they had ell or theta outside ({},{})".format(mask.size-mask.sum(), spectrum.name, min_scale, max_scale)
+                print("Masking {} values in {} because they had ell or theta outside ({},{})".format(mask.size-mask.sum(), spectrum.name, min_scale, max_scale))
                 #record the mask vector as we will need it to mask the covmat
                 masks.append(mask)
 
@@ -629,17 +629,15 @@ class TwoPointFile(object):
         if self.covmat_info.names==[spec.name for spec in self.spectra]:
             #Ordering is already ok
             return cov
-        print "Covariance matrix is not in the same order as the 2pt measurement extensions...doing some damn fiddly"
-        print "re-ordering, if I screw it up it's your fault for not putting your covariance in the right order"
+        print("Covariance matrix is not in the same order as the 2pt measurement extensions...doing some damn fiddly")
+        print("re-ordering, if I screw it up it's your fault for not putting your covariance in the right order")
         cov_starts = self.covmat_info.starts
         cov_lengths = self.covmat_info.lengths
         cov_names = self.covmat_info.names
         cov_ends=[cov_lengths[0]]
         for i in range(len(cov_names)-1):
             cov_ends.append(cov_ends[i]+cov_lengths[i+1])
-        #print 'cov_lengths',cov_lengths
-        #print 'cov_starts',cov_starts
-        #print 'cov_ends',cov_ends
+
         assert cov_ends[-1]==cov.shape[0]
 
         total_l=0
@@ -650,8 +648,6 @@ class TwoPointFile(object):
             total_l+=cov_lengths[cov_names.index(spectrum.name)]
         cov_out=np.zeros((total_l,total_l))
         start_i=0
-        #print spec_names
-        #print spec_inds
 
         for ti,ind_i in zip(spec_names,spec_inds):
             start_j=0
@@ -755,7 +751,7 @@ class TwoPointFile(object):
                 plt.ylabel(r"$\theta * \xi / 10^{-4}$")
                 plt.xlabel(r"$\theta$")
                 plt.ylim(1e-6,3e-4)
-            print "Saving {}".format(name)
+            print("Saving {}".format(name))
             plt.savefig(name)
             plt.close()
 
@@ -764,7 +760,7 @@ class TwoPointFile(object):
             plt.figure()
             for nz in kernel.nzs:
                 plt.plot(kernel.z, nz)
-            print "Saving {}".format(name)
+            print("Saving {}".format(name))
             plt.savefig(name)
             plt.close()
 
