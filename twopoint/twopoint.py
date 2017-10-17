@@ -145,17 +145,17 @@ class NumberDensity(object):
             fits.Column(name='Z_HIGH', array=self.zhigh, format='D'),
         ]
 
-        for i in xrange(self.nbin):
+        for i in range(self.nbin):
             name = "BIN{}".format(i+1)
             columns.append(fits.Column(name=name, array=self.nzs[i], format='D'))
 
         if self.sigma_e is not None:
-            for i in xrange(self.nbin):
+            for i in range(self.nbin):
                 name = "SIG_E_{}".format(i+1)
                 header[name] = self.sigma_e[i]
 
         if self.ngal is not None:
-            for i in xrange(self.nbin):
+            for i in range(self.nbin):
                 name = "NGAL_{}".format(i+1)
                 header[name] = self.ngal[i]
 
@@ -490,7 +490,7 @@ class TwoPointFile(object):
             bin2 = spectrum.bin2
             angbin = spectrum.angular_bin
             n = len(bin1)
-            for i in xrange(n):
+            for i in range(n):
                 self._spectrum_index[(name, bin1[i], bin2[i], angbin[i])] = index
                 index += 1
 
@@ -787,11 +787,11 @@ class SpectrumCovarianceBuilder(object):
     >>> builder = twopoint.SpectrumCovarianceBuilder()
     >>> i_bin, data, jk_err, sim_err = np.loadtxt("./xipm_cfhtlens_regcomb_blind1_passfields_athenazsj.dat").T
     >>> i = 0
-    >>> for bin1 in xrange(7):
-        for bin2 in xrange(bin1,7):
+    >>> for bin1 in range(7):
+        for bin2 in range(bin1,7):
             for name in ['xip', 'xim']:
                 stype = types[name]
-                for angbin in xrange(1,8):
+                for angbin in range(1,8):
                     ang = theta_values[angbin-1]
                     value = data[i]
                     i+=1
@@ -860,7 +860,7 @@ class SpectrumCovarianceBuilder(object):
             kernels = (kernel1,kernel2)
             types = (type1,type2)
             spectrum_index_vector = []
-            for i in xrange(self.total_length):
+            for i in range(self.total_length):
                 k1 = self.kernel1[i]
                 k2 = self.kernel2[i]
                 t1 = self.type1[i]
