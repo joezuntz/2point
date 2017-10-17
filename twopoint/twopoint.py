@@ -186,7 +186,7 @@ class SpectrumMeasurement(object):
         self.metadata = metadata
         if self.is_real_space():
             #angle is real
-            msg = "Files with real-space units must specify units as one of: {}".format(ANGULAR_UNITS.keys())
+            msg = "Files with real-space units must specify units as one of: {}".format(list(ANGULAR_UNITS.keys()))
             assert angle_unit in ANGULAR_UNITS,  msg
         self.angle_unit = angle_unit
 
@@ -318,7 +318,7 @@ class SpectrumMeasurement(object):
         header['N_ZBIN_2'] = len(np.unique(self.bin2))
         if self.metadata is not None:
             #Check metadata doesn't share any keys with the stuff that's already in the header
-            assert set(self.metadata.keys()).isdisjoint(header.keys())
+            assert set(self.metadata.keys()).isdisjoint(set(header.keys()))
             for key,val in self.metadata.iteritems():
                 header[key]=val
         header['N_ANG']=len(np.unique(self.angular_bin))

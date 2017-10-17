@@ -1,1 +1,1 @@
-from twopoint import *
+from .twopoint import *
