@@ -1,7 +1,7 @@
 from astropy.io import fits
 import astropy.units
 from astropy.table import Table
-from enum34 import Enum
+from .enum34 import Enum
 import numpy as np
 import copy
 #FITS header keyword indicating 2-point data
