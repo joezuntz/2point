@@ -1,8 +1,9 @@
-import distutils
-from distutils.core import setup, Extension, Command
+#!/usr/bin/env python
 
-setup(
-    name="twopoint", 
-    packages=['twopoint'],
-    version="0.1",
-)
+from distutils.core import setup
+
+setup(name='twopoint',
+      version='1.0',
+      install_requires=['numpy', 'astropy', 'enum34'],
+      packages=['twopoint'],
+      )
