@@ -168,7 +168,7 @@ class NumberDensity(object):
 
 class SpectrumMeasurement(object):
     def __init__(self, name, bins, types, kernels, windows, angular_bin, value, 
-        angle=None, error=None, angle_unit=None, metadata=None):
+                 angle=None, error=None, angle_unit=None, metadata=None, npairs=None, varxi=None):
         """metadata is a dictionary which will get added to the fits header"""
         self.name = name
         self.bin1, self.bin2 = bins
@@ -178,6 +178,8 @@ class SpectrumMeasurement(object):
         self.angular_bin = angular_bin
         self.angle = angle
         self.value = value
+        self.npairs = npairs
+        self.varxi = varxi
         if windows in window_types:
             self.windows = windows
         else:
@@ -280,7 +282,14 @@ class SpectrumMeasurement(object):
         else:
             angle = None
             angle_unit = None
-
+        if "NPAIRS" in data.names:
+            npairs = data['NPAIRS']
+        else:
+            npairs = None
+        if "VARXI" in data.names:
+            varxi = data['VARXI']
+        else:
+            varxi = None
 
         #Load a chunk of the covariance matrix too if present.
         if covmat_info is None:
@@ -289,7 +298,7 @@ class SpectrumMeasurement(object):
             error = covmat_info.get_error(name)
 
         return SpectrumMeasurement(name, (bin1, bin2), (type1, type2), (kernel1, kernel2), windows,
-            angular_bin, value, angle, error, angle_unit=angle_unit)
+                                   angular_bin, value, angle, error, angle_unit=angle_unit, npairs=npairs, varxi=varxi)
 
     def to_fits(self):
         header = fits.Header()
@@ -320,11 +329,13 @@ class SpectrumMeasurement(object):
                 columns.append(fits.Column(name='ANG', array=self.angle, format='D', unit=self.angle_unit))
             if self.windows=="CLBP":
                 columns.append(fits.Column(name='ANG', array=self.angle, format='2K',unit=self.angle_unit))
+        if self.npairs is not None:
+            columns.append(fits.Column(name='NPAIRS', array=self.npairs, format='D'))
+        if self.varxi is not None:
+            columns.append(fits.Column(name='VARXI', array=self.varxi, format='D'))
 
         extension = fits.BinTableHDU.from_columns(columns, header=header)
         return extension
-
-
 
 class CovarianceMatrixInfo(object):
     """Encapsulate a covariance matrix and indices in it"""
@@ -500,7 +511,6 @@ class TwoPointFile(object):
 
     def mask_scales(self, cuts={}, bin_cuts=[]):
         masks=[]
-        print
         for spectrum in self.spectra:
             mask = np.ones(len(spectrum), dtype=bool)
             for b1,b2 in spectrum.bin_pairs:
@@ -626,8 +636,6 @@ class TwoPointFile(object):
 
         hdulist = fits.HDUList(hdus)
         hdulist.writeto(filename, clobber=clobber)
-
-
 
 
     @classmethod
