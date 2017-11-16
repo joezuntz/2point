@@ -189,6 +189,7 @@ class SpectrumMeasurement(object):
             msg = "Files with real-space units must specify units as one of: {}".format(ANGULAR_UNITS.keys())
             assert angle_unit in ANGULAR_UNITS,  msg
         self.angle_unit = angle_unit
+        self.dv_index=None #This is the index in the datavector, will be populated when used in TwoPointFile
 
     def get_bin_pairs(self):
         all_pairs = zip(self.bin1,self.bin2)
@@ -411,6 +412,7 @@ class CovarianceMatrixInfo(object):
             spec_array = []
             #check this realisation has right number,type,length of spectra 
             for i_spec in range(num_spec):
+                print i_real,i_spec
                 assert spec_lists[i_real][i_spec].name == names[i_spec]
                 assert len(spec_lists[i_real][i_spec].value) == lengths[i_spec]
                 spec_array+=list(spec_lists[i_real][i_spec].value)
@@ -437,6 +439,11 @@ class TwoPointFile(object):
         if windows is None:
             windows = {}
         self.spectra = spectra
+        dv_start=0
+        for s in self.spectra:
+            n_dv = len(s.value)
+            s.dv_index = np.arange(dv_start, dv_start+n_dv)
+            dv_start += n_dv
         self.kernels = kernels
         self.windows = windows
         self.covmat_info = covmat_info
