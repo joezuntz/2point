@@ -168,8 +168,10 @@ class NumberDensity(object):
 
 class SpectrumMeasurement(object):
     def __init__(self, name, bins, types, kernels, windows, angular_bin, value, 
-                 angle=None, error=None, angle_unit=None, metadata=None, npairs=None, varxi=None):
+                 angle=None, error=None, angle_unit=None, metadata=None, npairs=None, 
+                 varxi=None, extra_cols=None):
         """metadata is a dictionary which will get added to the fits header"""
+        """extra cols is a dictionary of tuples (n"""
         self.name = name
         self.bin1, self.bin2 = bins
         self.bin_pairs = self.get_bin_pairs()  #unique bin pairs
@@ -191,6 +193,7 @@ class SpectrumMeasurement(object):
             msg = "Files with real-space units must specify units as one of: {}".format(list(ANGULAR_UNITS.keys()))
             assert angle_unit in ANGULAR_UNITS,  msg
         self.angle_unit = angle_unit
+        self.extra_cols = extra_cols
 
     def __str__(self):
         return "<Spectrum: {}>".format(self.name)
@@ -305,6 +308,21 @@ class SpectrumMeasurement(object):
         else:
             varxi = None
 
+        #check for extra columns
+        found_extra_cols=False
+        for c in data.names:
+            print c
+            if c.startswith("XTRA_"):
+                if not found_extra_cols:
+                    extra_cols={}
+                    found_extra_cols=True
+                colname = (c.replace("XTRA_", "")).lower()
+                extra_cols[colname] = data[c]
+        if not found_extra_cols:
+            print 'found no extra columns'
+            extra_cols=None
+        print 'extra_cols',extra_cols
+
         #Load a chunk of the covariance matrix too if present.
         if covmat_info is None:
             error = None
@@ -312,7 +330,8 @@ class SpectrumMeasurement(object):
             error = covmat_info.get_error(name)
 
         return SpectrumMeasurement(name, (bin1, bin2), (type1, type2), (kernel1, kernel2), windows,
-                                   angular_bin, value, angle, error, angle_unit=angle_unit, npairs=npairs, varxi=varxi)
+                                   angular_bin, value, angle, error, angle_unit=angle_unit, npairs=npairs, 
+                                   varxi=varxi, extra_cols=extra_cols)
 
     def to_fits(self):
         header = fits.Header()
@@ -347,6 +366,9 @@ class SpectrumMeasurement(object):
             columns.append(fits.Column(name='NPAIRS', array=self.npairs, format='D'))
         if self.varxi is not None:
             columns.append(fits.Column(name='VARXI', array=self.varxi, format='D'))
+        if self.extra_cols is not None:
+            for (colname,arr) in self.extra_cols.iteritems():
+                columns.append(fits.Column(name='XTRA_'+colname, array=arr, format='D'))
 
         extension = fits.BinTableHDU.from_columns(columns, header=header)
         return extension
