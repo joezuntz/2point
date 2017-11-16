@@ -311,7 +311,6 @@ class SpectrumMeasurement(object):
         #check for extra columns
         found_extra_cols=False
         for c in data.names:
-            print c
             if c.startswith("XTRA_"):
                 if not found_extra_cols:
                     extra_cols={}
@@ -321,7 +320,6 @@ class SpectrumMeasurement(object):
         if not found_extra_cols:
             print 'found no extra columns'
             extra_cols=None
-        print 'extra_cols',extra_cols
 
         #Load a chunk of the covariance matrix too if present.
         if covmat_info is None:
