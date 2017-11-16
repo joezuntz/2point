@@ -1,7 +1,7 @@
 from astropy.io import fits
 import astropy.units
 from astropy.table import Table
-from enum34 import Enum
+from .enum34 import Enum
 import numpy as np
 import copy
 #FITS header keyword indicating 2-point data
@@ -145,17 +145,17 @@ class NumberDensity(object):
             fits.Column(name='Z_HIGH', array=self.zhigh, format='D'),
         ]
 
-        for i in xrange(self.nbin):
+        for i in range(self.nbin):
             name = "BIN{}".format(i+1)
             columns.append(fits.Column(name=name, array=self.nzs[i], format='D'))
 
         if self.sigma_e is not None:
-            for i in xrange(self.nbin):
+            for i in range(self.nbin):
                 name = "SIG_E_{}".format(i+1)
                 header[name] = self.sigma_e[i]
 
         if self.ngal is not None:
-            for i in xrange(self.nbin):
+            for i in range(self.nbin):
                 name = "NGAL_{}".format(i+1)
                 header[name] = self.ngal[i]
 
@@ -168,8 +168,10 @@ class NumberDensity(object):
 
 class SpectrumMeasurement(object):
     def __init__(self, name, bins, types, kernels, windows, angular_bin, value, 
-        angle=None, error=None, angle_unit=None, metadata=None):
+                 angle=None, error=None, angle_unit=None, metadata=None, npairs=None, 
+                 varxi=None, extra_cols=None):
         """metadata is a dictionary which will get added to the fits header"""
+        """extra cols is a dictionary of tuples (n"""
         self.name = name
         self.bin1, self.bin2 = bins
         self.bin_pairs = self.get_bin_pairs()  #unique bin pairs
@@ -178,6 +180,8 @@ class SpectrumMeasurement(object):
         self.angular_bin = angular_bin
         self.angle = angle
         self.value = value
+        self.npairs = npairs
+        self.varxi = varxi
         if windows in window_types:
             self.windows = windows
         else:
@@ -186,10 +190,16 @@ class SpectrumMeasurement(object):
         self.metadata = metadata
         if self.is_real_space():
             #angle is real
-            msg = "Files with real-space units must specify units as one of: {}".format(ANGULAR_UNITS.keys())
+            msg = "Files with real-space units must specify units as one of: {}".format(list(ANGULAR_UNITS.keys()))
             assert angle_unit in ANGULAR_UNITS,  msg
         self.angle_unit = angle_unit
         self.dv_index=None #This is the index in the datavector, will be populated when used in TwoPointFile
+        self.extra_cols = extra_cols
+
+    def __str__(self):
+        return "<Spectrum: {}>".format(self.name)
+    def __repr__(self):
+        return "<Spectrum: {}>".format(self.name)
 
     def get_bin_pairs(self):
         all_pairs = zip(self.bin1,self.bin2)
@@ -202,6 +212,13 @@ class SpectrumMeasurement(object):
     def is_real_space(self):
         return self.type1.value.endswith("R") or self.type2.value.endswith("R")
 
+    def recompute_angular_bins(self):
+        angles = np.unique(self.angle)
+        angles.sort()
+        angles = angles.tolist()
+        angular_bin = [angles.index(ang)+1 for ang in self.angle]
+        self.angular_bin = np.array(angular_bin)
+
     def convert_angular_units(self, unit):
         if not self.is_real_space():
             raise ValueError("Two point spectrum has no units to convert; it is in Fourier space")
@@ -211,8 +228,8 @@ class SpectrumMeasurement(object):
         old_unit = ANGULAR_UNITS[self.angle_unit]
         new_unit = ANGULAR_UNITS[unit]
 
-        print "Converting angle units of {} from {} -> {} (factor {})".format(
-            self.name,old_unit, new_unit, old_unit.to(new_unit))
+        print("Converting angle units of {} from {} -> {} (factor {})".format(
+            self.name,old_unit, new_unit, old_unit.to(new_unit)))
         angle_with_units = self.angle*old_unit
         self.angle = angle_with_units.to(new_unit).value
         self.angle_unit = unit
@@ -225,6 +242,8 @@ class SpectrumMeasurement(object):
         self.angular_bin = self.angular_bin[mask]
         self.angle = self.angle[mask]
         self.value = self.value[mask]
+        if self.error is not None:
+            self.error = self.error[mask]
 
     def auto_bins(self):
         return self.bin1==self.bin2
@@ -281,7 +300,27 @@ class SpectrumMeasurement(object):
         else:
             angle = None
             angle_unit = None
+        if "NPAIRS" in data.names:
+            npairs = data['NPAIRS']
+        else:
+            npairs = None
+        if "VARXI" in data.names:
+            varxi = data['VARXI']
+        else:
+            varxi = None
 
+        #check for extra columns
+        found_extra_cols=False
+        for c in data.names:
+            if c.startswith("XTRA_"):
+                if not found_extra_cols:
+                    extra_cols={}
+                    found_extra_cols=True
+                colname = (c.replace("XTRA_", "")).lower()
+                extra_cols[colname] = data[c]
+        if not found_extra_cols:
+            print 'found no extra columns'
+            extra_cols=None
 
         #Load a chunk of the covariance matrix too if present.
         if covmat_info is None:
@@ -290,7 +329,8 @@ class SpectrumMeasurement(object):
             error = covmat_info.get_error(name)
 
         return SpectrumMeasurement(name, (bin1, bin2), (type1, type2), (kernel1, kernel2), windows,
-            angular_bin, value, angle, error, angle_unit=angle_unit)
+                                   angular_bin, value, angle, error, angle_unit=angle_unit, npairs=npairs, 
+                                   varxi=varxi, extra_cols=extra_cols)
 
     def to_fits(self):
         header = fits.Header()
@@ -305,7 +345,7 @@ class SpectrumMeasurement(object):
         header['N_ZBIN_2'] = len(np.unique(self.bin2))
         if self.metadata is not None:
             #Check metadata doesn't share any keys with the stuff that's already in the header
-            assert set(self.metadata.keys()).isdisjoint(header.keys())
+            assert set(self.metadata.keys()).isdisjoint(set(header.keys()))
             for key,val in self.metadata.iteritems():
                 header[key]=val
         header['N_ANG']=len(np.unique(self.angular_bin))
@@ -321,11 +361,16 @@ class SpectrumMeasurement(object):
                 columns.append(fits.Column(name='ANG', array=self.angle, format='D', unit=self.angle_unit))
             if self.windows=="CLBP":
                 columns.append(fits.Column(name='ANG', array=self.angle, format='2K',unit=self.angle_unit))
+        if self.npairs is not None:
+            columns.append(fits.Column(name='NPAIRS', array=self.npairs, format='D'))
+        if self.varxi is not None:
+            columns.append(fits.Column(name='VARXI', array=self.varxi, format='D'))
+        if self.extra_cols is not None:
+            for (colname,arr) in self.extra_cols.iteritems():
+                columns.append(fits.Column(name='XTRA_'+colname, array=arr, format='D'))
 
         extension = fits.BinTableHDU.from_columns(columns, header=header)
         return extension
-
-
 
 class CovarianceMatrixInfo(object):
     """Encapsulate a covariance matrix and indices in it"""
@@ -393,11 +438,11 @@ class CovarianceMatrixInfo(object):
         returns the mean as a list of SpectrumMeasurements, and the covariance as a CovarianceMatrixInfo
         object. mode should be one of full, subsample or jackknife"""
         #first check that spec_lists is a list of lists, and that there are at least 2
-        print 'spec_lists',spec_lists
+        print('spec_lists',spec_lists)
         try:
             spec_lists[1][0]
         except Exception as e:
-            print "spec_lists should be a list of lists with at least two elements"
+            print("spec_lists should be a list of lists with at least two elements")
             raise(e)
             
         #Get measurement names and lengths from first element of spec_lists
@@ -450,8 +495,11 @@ class TwoPointFile(object):
         if covmat_info:
             #self.covmat = covmat_info.covmat
             self.covmat = self.get_cov_start()
+            for s in self.spectra:
+                s.error = self.covmat_info.get_error(s.name)
         else:
             self.covmat = None
+        self._spectrum_index = None
 
     def get_spectrum(self, name):
         spectra = [spectrum for spectrum in self.spectra if spectrum.name==name]
@@ -473,11 +521,31 @@ class TwoPointFile(object):
         else:
             return kernels[0]
 
+    def _build_spectrum_index(self):
+        index = 0
+        self._spectrum_index = {}
+        for spectrum in self.spectra:
+            name = spectrum.name
+            bin1 = spectrum.bin1
+            bin2 = spectrum.bin2
+            angbin = spectrum.angular_bin
+            n = len(bin1)
+            for i in range(n):
+                self._spectrum_index[(name, bin1[i], bin2[i], angbin[i])] = index
+                index += 1
+
+    def get_overall_index(self, spectrum_name, bin1, bin2, angbin):
+        if self._spectrum_index is None:
+            self._build_spectrum_index()
+        return self._spectrum_index[(spectrum_name, bin1, bin2, angbin)]
+
     def _mask_covmat(self, masks):
         #Also cut down the covariance matrix accordingly
         if self.covmat is not None:
             mask = np.concatenate(masks)
             self.covmat = self.covmat[mask, :][:, mask]
+            self.covmat_info = CovarianceMatrixInfo(self.covmat_info.name, [s.name for s in self.spectra], [len(s) for s in self.spectra], self.covmat)
+        
 
     def mask_bad(self, bad_value):
         "Go through all the spectra masking out data where they are equal to bad_value"
@@ -487,37 +555,55 @@ class TwoPointFile(object):
             #nb this will not work for NaN!
             mask = (spectrum.value != bad_value) 
             spectrum.apply_mask(mask)
-            print "Masking {} values in {}".format(mask.size-mask.sum(), spectrum.name)
+            print("Masking {} values in {}".format(mask.size-mask.sum(), spectrum.name))
             #record the mask vector as we will need it to mask the covmat
             masks.append(mask)
         if masks:
             self._mask_covmat(masks)
+
+    def mask_indices(self, spectrum_name, indices):
+        s = self.get_spectrum(spectrum_name)
+        mask_points = np.array(indices)
+        masks = []
+        for s in self.spectra:
+            print("len", len(s))
+            mask = np.ones(len(s), dtype=bool)
+            if s.name == spectrum_name:
+                mask[mask_points] = False
+                s.apply_mask(mask)
+            print("Keeping {} points in {}".format(mask.sum(), s.name))
+            masks.append(mask)
+            print(mask_points)
+            print(mask)
+        self._mask_covmat(masks)
+
+
+
 
     def mask_cross(self):
         masks = []
         for spectrum in self.spectra:
             mask = spectrum.auto_bins()
             spectrum.apply_mask(mask)
-            print "Masking {} cross-values in {}".format(mask.size-mask.sum(), spectrum.name)
+            print("Masking {} cross-values in {}".format(mask.size-mask.sum(), spectrum.name))
             masks.append(mask)
         if masks:
             self._mask_covmat(masks)
 
     def mask_scales(self, cuts={}, bin_cuts=[]):
         masks=[]
-        print
         for spectrum in self.spectra:
             mask = np.ones(len(spectrum), dtype=bool)
             for b1,b2 in spectrum.bin_pairs:
                 w_full = np.where((spectrum.bin1==b1) & (spectrum.bin2==b2))[0]
                 if (spectrum.name, b1, b2) in bin_cuts:
-                    print "Removing {} bin ({},{}) altogether.".format(spectrum.name, b1, b2)
+                    print("Removing {} bin ({},{}) altogether.".format(spectrum.name, b1, b2))
                     mask[w_full] = False
                     continue
 
                 cut = cuts.get((spectrum.name,b1,b2))
                 if cut is None:
-                    print "No cut specified for {} bin ({},{})".format(spectrum.name, b1, b2)
+                    print("No cut specified for {} bin ({},{})".format(spectrum.name, b1, b2))
                     continue
 
                 #Actually do the cut
@@ -525,13 +611,13 @@ class TwoPointFile(object):
                 w = np.where((spectrum.bin1==b1) & (spectrum.bin2==b2) & 
                     ((spectrum.angle<ang_min) | (spectrum.angle>ang_max) ) )[0]
                 
-                print "Cutting {} bin pair ({},{}) to angle range ({} - {}) : this removes {} values out of {}".format(
-                    spectrum.name, b1, b2, ang_min, ang_max, len(w), len(w_full))
+                print("Cutting {} bin pair ({},{}) to angle range ({} - {}) : this removes {} values out of {}".format(
+                    spectrum.name, b1, b2, ang_min, ang_max, len(w), len(w_full)))
 
                 mask[w] = False
             masks.append(mask)
             spectrum.apply_mask(mask)
-            print
+            print("")
 
         if masks:
             self._mask_covmat(masks)
@@ -548,7 +634,7 @@ class TwoPointFile(object):
                 #nb this will not work for NaN!
                 mask = (spectrum.angle > min_scale) & (spectrum.angle < max_scale) 
                 spectrum.apply_mask(mask)            
-                print "Masking {} values in {} because they had ell or theta outside ({},{})".format(mask.size-mask.sum(), spectrum.name, min_scale, max_scale)
+                print("Masking {} values in {} because they had ell or theta outside ({},{})".format(mask.size-mask.sum(), spectrum.name, min_scale, max_scale))
                 #record the mask vector as we will need it to mask the covmat
                 masks.append(mask)
 
@@ -582,17 +668,15 @@ class TwoPointFile(object):
         if self.covmat_info.names==[spec.name for spec in self.spectra]:
             #Ordering is already ok
             return cov
-        print "Covariance matrix is not in the same order as the 2pt measurement extensions...doing some damn fiddly"
-        print "re-ordering, if I screw it up it's your fault for not putting your covariance in the right order"
+        print("Covariance matrix is not in the same order as the 2pt measurement extensions...doing some damn fiddly")
+        print("re-ordering, if I screw it up it's your fault for not putting your covariance in the right order")
         cov_starts = self.covmat_info.starts
         cov_lengths = self.covmat_info.lengths
         cov_names = self.covmat_info.names
         cov_ends=[cov_lengths[0]]
         for i in range(len(cov_names)-1):
             cov_ends.append(cov_ends[i]+cov_lengths[i+1])
-        #print 'cov_lengths',cov_lengths
-        #print 'cov_starts',cov_starts
-        #print 'cov_ends',cov_ends
+
         assert cov_ends[-1]==cov.shape[0]
 
         total_l=0
@@ -603,8 +687,6 @@ class TwoPointFile(object):
             total_l+=cov_lengths[cov_names.index(spectrum.name)]
         cov_out=np.zeros((total_l,total_l))
         start_i=0
-        #print spec_names
-        #print spec_inds
 
         for ti,ind_i in zip(spec_names,spec_inds):
             start_j=0
@@ -631,8 +713,6 @@ class TwoPointFile(object):
 
         hdulist = fits.HDUList(hdus)
         hdulist.writeto(filename, clobber=clobber)
-
-
 
 
     @classmethod
@@ -685,3 +765,171 @@ class TwoPointFile(object):
     @classmethod
     def _windows_from_fits(cls, extension):
         raise NotImplementedError("non-sample window functions in ell/theta")
+
+    def plots(self, root, callback=None):
+        import matplotlib.pyplot as plt
+        for spectrum in self.spectra:
+            name = "{}_{}.png".format(root,spectrum.name)
+            pairs = spectrum.bin_pairs
+            n = len(pairs)
+            if n==0:
+                continue
+
+            plt.figure(figsize=(7,5*n))
+            for k,pair in enumerate(pairs):
+                plt.subplot(n,1,k+1)
+                i,j=pair
+                theta, xi = spectrum.get_pair(i,j)
+                error = spectrum.get_error(i,j)
+                plt.errorbar(theta, abs(xi), error, fmt='k.')
+                plt.title("Pair ({},{})".format(i,j))
+                plt.gca().set_xscale('log', nonposx='clip')
+                plt.gca().set_yscale('log', nonposy='clip')
+                plt.ylabel(r"$\theta * \xi / 10^{-4}$")
+                plt.xlabel(r"$\theta$")
+                plt.ylim(1e-6,3e-4)
+            print("Saving {}".format(name))
+            plt.savefig(name)
+            plt.close()
+
+        for kernel in self.kernels:
+            name = "{}_{}.png".format(root,kernel.name)
+            plt.figure()
+            for nz in kernel.nzs:
+                plt.plot(kernel.z, nz)
+            print("Saving {}".format(name))
+            plt.savefig(name)
+            plt.close()
+
+
+
+            
+
+
+
+class SpectrumCovarianceBuilder(object):
+    """
+    This class helps you ensure that the ordering between a set of data points and 
+    their covariance is consistently maintained.  You add data points to it one by one.,
+    in the order that they appear in the covariance.
+
+    Here is an example using ther CFHTLenS revisited files:
+
+    >>> theta_values = [1.41, 2.79, 5.53, 11.0, 21.7, 43.0, 85.2]
+    >>> types = {
+        'xip': twopoint.Types.galaxy_shear_plus_real,
+        'xim': twopoint.Types.galaxy_shear_minus_real,
+    }
+    >>> kernel='NZ_SOURCE'
+    >>> builder = twopoint.SpectrumCovarianceBuilder()
+    >>> i_bin, data, jk_err, sim_err = np.loadtxt("./xipm_cfhtlens_regcomb_blind1_passfields_athenazsj.dat").T
+    >>> i = 0
+    >>> for bin1 in range(7):
+        for bin2 in range(bin1,7):
+            for name in ['xip', 'xim']:
+                stype = types[name]
+                for angbin in range(1,8):
+                    ang = theta_values[angbin-1]
+                    value = data[i]
+                    i+=1
+                    builder.add_data_point(kernel,kernel,stype,stype,bin1+1,bin2+1,ang,angbin,value)
+    >>> names = {builder.types[0]:"xip", builder.types[1]:"xim"}
+    >>> builder.set_names(names)
+    >>> spectra, covmat_info = builder.generate(covmat,"arcmin")
+    """
+    def __init__(self):
+        self.kernel1 = []
+        self.kernel2 = []
+        self.bin1 = []
+        self.bin2 = []
+        self.type1 = []
+        self.type2 = []
+        self.ang = []
+        self.angbin = []
+        self.value = []
+        self.names = None
+        self.types = []
+        self.total_length = 0
+
+    def add_data_point(self, kernel1, kernel2, type1, type2, bin1, bin2, ang, angbin, value):
+        self.kernel1.append(kernel1)
+        self.kernel2.append(kernel2)
+        self.type1.append(type1)
+        self.type2.append(type2)
+        self.bin1.append(bin1)
+        self.bin2.append(bin2)
+        self.ang.append(ang)
+        self.angbin.append(angbin)
+        self.value.append(value)
+        self.total_length += 1
+
+        spec  = kernel1,kernel2,type1,type2
+        if spec not in self.types:
+            self.types.append(spec)
+
+
+
+    def _freeze(self):
+        self.bin1 = np.array(self.bin1)
+        self.bin2 = np.array(self.bin2)
+        self.ang = np.array(self.ang)
+        self.angbin = np.array(self.angbin)
+        self.value = np.array(self.value)
+    
+
+    def set_names(self, names):
+        for t in self.types:
+            if t not in names:
+                raise ValueError("Please provide name for spectrum of type: {}".format(t))
+        self.names = names
+
+
+    def generate(self, covariance, angle_unit):
+        if self.names is None:
+            raise ValueError("Please provide names for each type in self.types first")
+        self._freeze()
+        assert covariance.shape == (self.total_length,self.total_length)
+        #get all the unique pairs of type1,type2.  maintain order
+        #shouldn't be more than a few types so the list membership test is fast
+        master_index_vector = []
+        spectra = []
+        for kernel1,kernel2,type1,type2 in self.types:
+            kernels = (kernel1,kernel2)
+            types = (type1,type2)
+            spectrum_index_vector = []
+            for i in range(self.total_length):
+                k1 = self.kernel1[i]
+                k2 = self.kernel2[i]
+                t1 = self.type1[i]
+                t2 = self.type2[i]
+                if (type1!=t1) or (type2!=t2) or (kernel1!=k1) or (kernel2!=k2):
+                    continue
+                master_index_vector.append(i)
+                spectrum_index_vector.append(i)
+            bins = (self.bin1[spectrum_index_vector], self.bin2[spectrum_index_vector])
+            angular_bin = self.angbin[spectrum_index_vector]
+            value = self.value[spectrum_index_vector]
+            angle=self.ang[spectrum_index_vector]
+            name = self.names[(kernel1,kernel2,type1,type2)]
+            windows = "SAMPLE"
+            spectrum = SpectrumMeasurement(name, bins, types, kernels, windows, angular_bin, value, angle=angle, angle_unit=angle_unit)
+            spectra.append(spectrum)
+
+
+        reordered_covariance = covariance[master_index_vector][:,master_index_vector]
+        covmat_info = CovarianceMatrixInfo("COVMAT", [s.name for s in spectra], [len(s) for s in spectra], reordered_covariance)
+
+
+        return spectra, covmat_info
+
+
+
+
+if __name__ == '__main__':
+    import sys
+    filename = sys.argv[1]
+    output_root = sys.argv[2]
+    T = TwoPointFile.from_fits(filename, covmat_name=None)
+    T.plots(output_root)
+
+
