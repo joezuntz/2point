@@ -9,7 +9,7 @@ TWOPOINT_SENTINEL = "2PTDATA"
 NZ_SENTINEL = "NZDATA"
 COV_SENTINEL = "COVDATA"
 window_types=["SAMPLE","CLBP"]
-
+METADATA_PREFIX="MD_"
 
 #Please do not add things to this list
 ANGULAR_UNIT_TYPES=[
@@ -321,6 +321,12 @@ class SpectrumMeasurement(object):
             print 'found no extra columns'
             extra_cols=None
 
+        #check for metadata
+        metadata={}
+        for key in extension.header:
+            if key.startswith(METADATA_PREFIX):
+                metadata[key.replace(METADATA_PREFIX,"")] = extension.header[key]
+
         #Load a chunk of the covariance matrix too if present.
         if covmat_info is None:
             error = None
@@ -329,7 +335,7 @@ class SpectrumMeasurement(object):
 
         return SpectrumMeasurement(name, (bin1, bin2), (type1, type2), (kernel1, kernel2), windows,
                                    angular_bin, value, angle, error, angle_unit=angle_unit, npairs=npairs, 
-                                   varxi=varxi, extra_cols=extra_cols)
+                                   varxi=varxi, extra_cols=extra_cols, metadata=metadata)
 
     def to_fits(self):
         header = fits.Header()
@@ -346,7 +352,7 @@ class SpectrumMeasurement(object):
             #Check metadata doesn't share any keys with the stuff that's already in the header
             assert set(self.metadata.keys()).isdisjoint(set(header.keys()))
             for key,val in self.metadata.iteritems():
-                header[key]=val
+                header[METADATA_PREFIX+key]=val #Use MD_ prefix so metadata entries can be easily recognised by from_fits
         header['N_ANG']=len(np.unique(self.angular_bin))
 
         columns = [
