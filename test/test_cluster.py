@@ -83,10 +83,19 @@ def test_cluster():
               angle_unit = 'arcmin' )
 
     # make twopoint object
-    twopoint_file = twopoint.TwoPointFile( [gamma_t, counts], [ nz_cluster, nz_source ],
+    data_file_obj = twopoint.TwoPointFile( [gamma_t, counts], [ nz_cluster, nz_source ],
     None, None )
     #save to fits
-    twopoint_file.to_fits('test_cluster.fits')                   
+    filename = 'test_cluster.fits'
+    data_file_obj.to_fits(filename, clobber=True)    
+
+    # Now read it back in and make sure its not nonsense.
+    cluster_data = twopoint.TwoPointFile.from_fits(filename, covmat_name=None)
+    print cluster_data.measurements 
+    #Check kernels 
+
+
+
 
 
 

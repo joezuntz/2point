@@ -325,7 +325,7 @@ class SpectrumMeasurement(object):
         return self.error[w]
 
     @classmethod
-    def from_fits(cls, extension):
+    def from_fits(cls, extension, covmat_info=None):
         name=extension.name
         #determine the type of the quantity involved
         type1 = Types.lookup(extension.header['QUANT1'])
