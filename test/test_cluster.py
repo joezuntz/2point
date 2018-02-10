@@ -50,9 +50,21 @@ def test_cluster():
 
     #make some counts
     count_vals = np.random.random(n_lambda_bin * n_zbin_cluster)
-    counts = twopoint.CountMeasurement( 'cluster_counts', 'nz_cluster', count_vals)
 
-    #make some lensing profiles and counts
+    #save the cluster redshift bin and richness bin as extra columns
+    zcl_col = np.zeros(len(count_vals))
+    lambda_col = np.zeros_like(zcl_col)
+    k=0
+    for zcl_ind in range(1, n_zbin_cluster+1):
+        for lambda_ind in range(1, n_lambda_bin+1):
+            zcl_col[k] = zcl_ind
+            lambda_col[k] = lambda_ind
+    extra_cols = { "zcl_bin" : zcl_col, "lambda_bin" : lambda_col }
+    counts = twopoint.CountMeasurement( 'cluster_counts', 'nz_cluster', count_vals,
+        extra_cols = extra_cols)
+
+
+    #make some lensing profiles
     #total length of gamma_t measurements is n_theta * n_cluster_bin * n_source_bin
     gamma_t_length = n_theta * n_cluster_bin * n_source_bin
     gammat_values = np.zeros(gamma_t_length, dtype=float)
@@ -91,8 +103,10 @@ def test_cluster():
 
     # Now read it back in and make sure its not nonsense.
     cluster_data = twopoint.TwoPointFile.from_fits(filename, covmat_name=None)
-    print cluster_data.measurements 
+    # 
+
     #Check kernels 
+
 
 
 
