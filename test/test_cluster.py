@@ -50,19 +50,17 @@ def test_cluster():
 
     #make some counts
     count_vals = np.random.random(n_lambda_bin * n_zbin_cluster)
-
     #save the cluster redshift bin and richness bin as extra columns
-    zcl_col = np.zeros(len(count_vals))
-    lambda_col = np.zeros_like(zcl_col)
+    zcl_bin = np.zeros(len(count_vals))
+    lambda_bin = np.zeros_like(zcl_col)
     k=0
     for zcl_ind in range(1, n_zbin_cluster+1):
         for lambda_ind in range(1, n_lambda_bin+1):
-            zcl_col[k] = zcl_ind
-            lambda_col[k] = lambda_ind
-    extra_cols = { "zcl_bin" : zcl_col, "lambda_bin" : lambda_col }
+            zcl_bin[k] = zcl_ind
+            lambda_bin[k] = lambda_ind
+    extra_cols = { "zcl_bin" : zcl_bin, "lambda_bin" : lambda_bin }
     counts = twopoint.CountMeasurement( 'cluster_counts', 'nz_cluster', count_vals,
         extra_cols = extra_cols)
-
 
     #make some lensing profiles
     #total length of gamma_t measurements is n_theta * n_cluster_bin * n_source_bin
@@ -72,6 +70,9 @@ def test_cluster():
     bin2 = np.zeros_like(bin1)
     angular_bin = np.zeros_like(bin1)
     angle = np.zeros_like(gammat_values)
+    #bin1 is the (z,lambda) bin, save z and lambda arrays as extra columns
+    zcl_bin = np.zeros_like(bin1)
+    lambda_bin = np.zeros_like(bin1)
     gammat_base = 0.03/theta_arcmin 
     dv_start=0
     #loop through cluster z bins
@@ -83,16 +84,19 @@ def test_cluster():
                 bin_pair_inds = np.arange(dv_start, dv_start + n_theta)
                 gammat_amp = zcl_ind * lambda_ind * zs_ind #Give bin combination its own amplitude
                 gammat_values[bin_pair_inds] = gammat_base * gammat_amp
-                bin1[bin_pair_inds] = zcl_ind
+                bin1[bin_pair_inds] = cl_ind
                 bin2[bin_pair_inds] = zs_ind
                 angular_bin[bin_pair_inds] = np.arange(n_theta)
                 angle[bin_pair_inds] = theta_arcmin
+                zcl_bin[bin_pair_inds] = zcl_ind
+                lambda_bin[bin_pair_inds] = lambda_ind
+    extra_cols = { "zcl_bin" : zcl_bin, "lambda_bin" : lambda_ind }
 
     #Now make SpectrumMeasurement object
     gamma_t = twopoint.SpectrumMeasurement( 'cluster_gamma_t', (bin1, bin2),
               (twopoint.Types.galaxy_position_real, twopoint.Types.galaxy_shear_plus_real),
               [ 'nz_cluster', 'nz_source' ], 'SAMPLE', angular_bin, gammat_values, angle = angle,
-              angle_unit = 'arcmin' )
+              angle_unit = 'arcmin', extra_cols = extra_cols )
 
     # make twopoint object
     data_file_obj = twopoint.TwoPointFile( [gamma_t, counts], [ nz_cluster, nz_source ],
