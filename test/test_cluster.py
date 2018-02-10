@@ -107,14 +107,7 @@ def test_cluster():
 
     # Now read it back in and make sure its not nonsense.
     cluster_data = twopoint.TwoPointFile.from_fits(filename, covmat_name=None)
-    # 
-
-    #Check kernels 
-
-
-
-
-
+    #...
 
 
 if __name__=="__main__":
