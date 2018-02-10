@@ -164,7 +164,8 @@ class NumberDensity(object):
         return extension        
         
 class CountMeasurement(object):
-    def __init__(self, name, kernel, counts, metadata=None, extra_cols=None):
+    def __init__(self, name, kernel, counts=None,
+        metadata=None, extra_cols=None):
         self.name = name
         self.kernel = kernel
         self.bin1 = np.arange(1, len(counts)+1)
