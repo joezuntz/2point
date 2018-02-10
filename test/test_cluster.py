@@ -2,6 +2,7 @@
 import twopoint
 import numpy as np
 
+
 def test_cluster():
 
     #Let's imagine we have two lens redshift bins and two source redshift bins
@@ -52,7 +53,7 @@ def test_cluster():
     count_vals = np.random.random(n_lambda_bin * n_zbin_cluster)
     #save the cluster redshift bin and richness bin as extra columns
     zcl_bin = np.zeros(len(count_vals))
-    lambda_bin = np.zeros_like(zcl_col)
+    lambda_bin = np.zeros_like(zcl_bin)
     k=0
     for zcl_ind in range(1, n_zbin_cluster+1):
         for lambda_ind in range(1, n_lambda_bin+1):
@@ -90,7 +91,7 @@ def test_cluster():
                 angle[bin_pair_inds] = theta_arcmin
                 zcl_bin[bin_pair_inds] = zcl_ind
                 lambda_bin[bin_pair_inds] = lambda_ind
-    extra_cols = { "zcl_bin" : zcl_bin, "lambda_bin" : lambda_ind }
+    extra_cols = { "zcl_bin" : zcl_bin, "lambda_bin" : lambda_bin }
 
     #Now make SpectrumMeasurement object
     gamma_t = twopoint.SpectrumMeasurement( 'cluster_gamma_t', (bin1, bin2),
@@ -107,8 +108,14 @@ def test_cluster():
 
     # Now read it back in and make sure its not nonsense.
     cluster_data = twopoint.TwoPointFile.from_fits(filename, covmat_name=None)
-    #...
-
+    #Get the gamma_t measurement for cluster bin i, richness bin j, source bin k
+    i,j,k = 1,2,2
+    cgt = cluster_data.get_measurement('cluster_gamma_t')
+    cgt_1_2_2 = cgt.value[ (cgt.extra_cols["zcl_bin"] == i )
+                               * (cgt.extra_cols["lambda_bin"] == j )
+                               * (cgt.bin2 == k ) ]
+    #check its what we put in
+    np.testing.assert_allclose( cgt_1_2_2, gammat_base * i * j * k )
 
 if __name__=="__main__":
     test_cluster()
