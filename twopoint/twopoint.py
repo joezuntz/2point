@@ -6,6 +6,7 @@ import numpy as np
 import copy
 #FITS header keyword indicating 2-point data
 TWOPOINT_SENTINEL = "2PTDATA"
+COUNT_SENTINEL = "COUNTDATA"
 NZ_SENTINEL = "NZDATA"
 COV_SENTINEL = "COVDATA"
 window_types=["SAMPLE","CLBP"]
@@ -159,12 +160,66 @@ class NumberDensity(object):
                 name = "NGAL_{}".format(i+1)
                 header[name] = self.ngal[i]
 
-
-
         extension = fits.BinTableHDU.from_columns(columns, header=header)
         return extension        
         
+class CountMeasurement(object):
+    def __init__(self, name, kernel, counts, metadata=None, extra_cols=None):
+        self.name = name
+        self.kernel = kernel
+        self.bin1 = np.arange(1, len(counts)+1)
+        self.value = counts
+        self.metadata = metadata
+        self.extra_cols = extra_cols
 
+    @classmethod
+    def from_fits(cls, extension, covmat_info=None):
+        name=extension.name
+
+        #and the name of the kernels and the window function
+        #extensions
+        kernel = extension.header['KERNEL']
+
+        #Now load the data
+        data = extension.data
+        counts = data['VALUE']
+        bins = data['BIN1']
+
+        #check for metadata
+        metadata={}
+        for key in extension.header:
+            if key.startswith(METADATA_PREFIX):
+                metadata[key.replace(METADATA_PREFIX,"")] = extension.header[key]
+
+        #Load a chunk of the covariance matrix too if present.
+        if covmat_info is None:
+            error = None
+        else:
+            error = covmat_info.get_error(name)
+        return CountMeasurement(name, kernel, count, metadata=metadata)
+
+    def to_fits(self):
+        header = fits.Header()
+        header[COUNT_SENTINEL]= True
+        header['EXTNAME']=self.name
+        header['KERNEL'] = self.kernel
+        header['N_BIN'] = len(np.unique(self.bin1))
+        if self.metadata is not None:
+            #Check metadata doesn't share any keys with the stuff that's already in the header
+            assert set(self.metadata.keys()).isdisjoint(set(header.keys()))
+            for key,val in self.metadata.iteritems():
+                header[METADATA_PREFIX+key]=val #Use MD_ prefix so metadata entries can be easily recognised by from_fits
+
+        columns = [
+            fits.Column(name='BIN_1', array=self.bin1, format='K'),
+            fits.Column(name='VALUE', array=self.value, format='D'),
+        ]
+        if self.extra_cols is not None:
+            for (colname,arr) in self.extra_cols.iteritems():
+                columns.append(fits.Column(name='XTRA_'+colname, array=arr, format='D'))
+
+        extension = fits.BinTableHDU.from_columns(columns, header=header)
+        return extension
 
 class SpectrumMeasurement(object):
     def __init__(self, name, bins, types, kernels, windows, angular_bin, value, 
@@ -270,7 +325,7 @@ class SpectrumMeasurement(object):
         return self.error[w]
 
     @classmethod
-    def from_fits(cls, extension, covmat_info=None):
+    def from_fits(cls, extension):
         name=extension.name
         #determine the type of the quantity involved
         type1 = Types.lookup(extension.header['QUANT1'])
@@ -486,14 +541,15 @@ class CovarianceMatrixInfo(object):
         return cls(cov_name, names, lengths, cov_values), mean_spec
         
 class TwoPointFile(object):
-    def __init__(self, spectra, kernels, windows, covmat_info):
+    def __init__(self, measurements, kernels, windows, covmat_info, kernels_with_counts=None):
         if windows is None:
             windows = {}
-        self.spectra = spectra
+        self.measurements = measurements
         dv_start=0
-        for s in self.spectra:
-            n_dv = len(s.value)
-            s.dv_index = np.arange(dv_start, dv_start+n_dv)
+        #loop through spectra getting lengths
+        for m in self.measurements:
+            n_dv = len(m.value)
+            m.dv_index = np.arange(dv_start, dv_start+n_dv)
             dv_start += n_dv
         self.kernels = kernels
         self.windows = windows
@@ -501,21 +557,21 @@ class TwoPointFile(object):
         if covmat_info:
             #self.covmat = covmat_info.covmat
             self.covmat = self.get_cov_start()
-            for s in self.spectra:
-                s.error = self.covmat_info.get_error(s.name)
+            for m in self.measurements:
+                m.error = self.covmat_info.get_error(m.name)
         else:
             self.covmat = None
-        self._spectrum_index = None
+        self._measurement_index = None
 
-    def get_spectrum(self, name):
-        spectra = [spectrum for spectrum in self.spectra if spectrum.name==name]
-        n = len(spectra)
+    def get_measurement(self, name):
+        measurements = [m for m in self.measurements if m.name==name]
+        n = len(measurements)
         if n==0:
-            raise ValueError("Spectrum with name %s not found in file"%name)
+            raise ValueError("Measurement with name %s not found in file"%name)
         elif n>1:
-            raise ValueError("Multiple spectra with name %s found in file"%name)
+            raise ValueError("Multiple measurements with name %s found in file"%name)
         else:
-            return spectra[0]
+            return measurements[0]
 
     def get_kernel(self, name):
         kernels = [kernel for kernel in self.kernels if kernel.name==name]
@@ -527,64 +583,68 @@ class TwoPointFile(object):
         else:
             return kernels[0]
 
-    def _build_spectrum_index(self):
+    def _build_measurement_index(self):
         index = 0
-        self._spectrum_index = {}
-        for spectrum in self.spectra:
-            name = spectrum.name
-            bin1 = spectrum.bin1
-            bin2 = spectrum.bin2
-            angbin = spectrum.angular_bin
+        self._measurement_index = {}
+        for measurement in self.measurements:
+            name = measurement.name
+            try:
+                bin1 = measurement.bin1
+                bin2 = measurement.bin2
+                angbin = measurement.angular_bin
+            except AttributeError:
+                bin1 = measurement.bin1
+                bin2 = None
+                angbin = None
             n = len(bin1)
             for i in range(n):
-                self._spectrum_index[(name, bin1[i], bin2[i], angbin[i])] = index
+                self._measurement_index[(name, bin1[i], bin2[i], angbin[i])] = index
                 index += 1
 
-    def get_overall_index(self, spectrum_name, bin1, bin2, angbin):
-        if self._spectrum_index is None:
-            self._build_spectrum_index()
-        return self._spectrum_index[(spectrum_name, bin1, bin2, angbin)]
+    def get_overall_index(self, measurement_name, bin1, bin2, angbin):
+        if self._measurement_index is None:
+            self._build_measurement_index()
+        return self._measurement_index[(measurement_name, bin1, bin2, angbin)]
 
     def _mask_covmat(self, masks):
         #Also cut down the covariance matrix accordingly
         if self.covmat is not None:
             mask = np.concatenate(masks)
             self.covmat = self.covmat[mask, :][:, mask]
-            self.covmat_info = CovarianceMatrixInfo(self.covmat_info.name, [s.name for s in self.spectra], [len(s) for s in self.spectra], self.covmat)
+            self.covmat_info = CovarianceMatrixInfo(self.covmat_info.name, 
+                [m.name for m in self.measurements], 
+                [len(m.value) for m in self.measurements], self.covmat)
         
 
     def mask_bad(self, bad_value):
         "Go through all the spectra masking out data where they are equal to bad_value"
         masks = []
         #go through the spectra and covmat, masking out the bad values.
-        for spectrum in self.spectra:
+        for m in self.measurements:
             #nb this will not work for NaN!
-            mask = (spectrum.value != bad_value) 
-            spectrum.apply_mask(mask)
-            print("Masking {} values in {}".format(mask.size-mask.sum(), spectrum.name))
+            mask = (m.value != bad_value) 
+            m.apply_mask(mask)
+            print("Masking {} values in {}".format(mask.size-mask.sum(), m.name))
             #record the mask vector as we will need it to mask the covmat
             masks.append(mask)
         if masks:
             self._mask_covmat(masks)
 
-    def mask_indices(self, spectrum_name, indices):
-        s = self.get_spectrum(spectrum_name)
+    def mask_indices(self, measurement_name, indices):
+        m = self.get_spectrum(measurement_name)
         mask_points = np.array(indices)
         masks = []
-        for s in self.spectra:
-            print("len", len(s))
-            mask = np.ones(len(s), dtype=bool)
-            if s.name == spectrum_name:
+        for m in self.measurements:
+            print("len", len(m))
+            mask = np.ones(len(m), dtype=bool)
+            if m.name == measurement_name:
                 mask[mask_points] = False
-                s.apply_mask(mask)
-            print("Keeping {} points in {}".format(mask.sum(), s.name))
+                m.apply_mask(mask)
+            print("Keeping {} points in {}".format(mask.sum(), m.name))
             masks.append(mask)
             print(mask_points)
             print(mask)
         self._mask_covmat(masks)
-
-
-
 
     def mask_cross(self):
         masks = []
@@ -708,10 +768,11 @@ class TwoPointFile(object):
         if self.covmat_info is not None:
             hdus.append(self.covmat_info.to_fits())
 
-        for spectrum in self.spectra:
-            if spectrum.windows not in window_types:
-                raise NotImplementedError("Sorry - not yet coded general case with ell/theta window functions")
-            hdus.append(spectrum.to_fits())
+        for measurement in self.measurements:
+            if isinstance(measurement, SpectrumMeasurement):
+                if measurement.windows not in window_types:
+                    raise NotImplementedError("Sorry - not yet coded general case with ell/theta window functions")
+            hdus.append(measurement.to_fits())
 
         if self.kernels is not None:
             for kernel in self.kernels:
