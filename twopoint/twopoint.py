@@ -592,7 +592,7 @@ class TwoPointFile(object):
             windows = {}
         self.measurements = measurements
         dv_start=0
-        #loop through spectra getting lengths
+        #loop through measurements getting lengths
         for m in self.measurements:
             n_dv = len(m.value)
             m.dv_index = np.arange(dv_start, dv_start+n_dv)
@@ -663,9 +663,9 @@ class TwoPointFile(object):
         
 
     def mask_bad(self, bad_value):
-        "Go through all the spectra masking out data where they are equal to bad_value"
+        "Go through all the measurements masking out data where they are equal to bad_value"
         masks = []
-        #go through the spectra and covmat, masking out the bad values.
+        #go through the measurements and covmat, masking out the bad values.
         for m in self.measurements:
             #nb this will not work for NaN!
             mask = (m.value != bad_value) 
@@ -694,59 +694,59 @@ class TwoPointFile(object):
 
     def mask_cross(self):
         masks = []
-        for spectrum in self.spectra:
-            mask = spectrum.auto_bins()
-            spectrum.apply_mask(mask)
-            print("Masking {} cross-values in {}".format(mask.size-mask.sum(), spectrum.name))
+        for measurement in self.measurements:
+            mask = measurements.auto_bins()
+            measurement.apply_mask(mask)
+            print("Masking {} cross-values in {}".format(mask.size-mask.sum(), measurement.name))
             masks.append(mask)
         if masks:
             self._mask_covmat(masks)
 
     def mask_scales(self, cuts={}, bin_cuts=[]):
         masks=[]
-        for spectrum in self.spectra:
-            mask = np.ones(len(spectrum), dtype=bool)
-            for b1,b2 in spectrum.bin_pairs:
-                w_full = np.where((spectrum.bin1==b1) & (spectrum.bin2==b2))[0]
-                if (spectrum.name, b1, b2) in bin_cuts:
-                    print("Removing {} bin ({},{}) altogether.".format(spectrum.name, b1, b2))
+        for measurement in self.measurements:
+            mask = np.ones(len(measurement), dtype=bool)
+            for b1,b2 in measurement.bin_pairs:
+                w_full = np.where((measurement.bin1==b1) & (measurement.bin2==b2))[0]
+                if (measurement.name, b1, b2) in bin_cuts:
+                    print("Removing {} bin ({},{}) altogether.".format(measurement.name, b1, b2))
                     mask[w_full] = False
                     continue
 
-                cut = cuts.get((spectrum.name,b1,b2))
+                cut = cuts.get((measurement.name,b1,b2))
                 if cut is None:
-                    print("No cut specified for {} bin ({},{})".format(spectrum.name, b1, b2))
+                    print("No cut specified for {} bin ({},{})".format(measurement.name, b1, b2))
                     continue
 
                 #Actually do the cut
                 ang_min, ang_max = cut
-                w = np.where((spectrum.bin1==b1) & (spectrum.bin2==b2) & 
-                    ((spectrum.angle<ang_min) | (spectrum.angle>ang_max) ) )[0]
+                w = np.where((measurement.bin1==b1) & (measurement.bin2==b2) &
+                    ((measurement.angle<ang_min) | (measurement.angle>ang_max) ) )[0]
                 
                 print("Cutting {} bin pair ({},{}) to angle range ({} - {}) : this removes {} values out of {}".format(
-                    spectrum.name, b1, b2, ang_min, ang_max, len(w), len(w_full)))
+                    measurement.name, b1, b2, ang_min, ang_max, len(w), len(w_full)))
 
                 mask[w] = False
             masks.append(mask)
-            spectrum.apply_mask(mask)
+            measurement.apply_mask(mask)
             print("")
 
         if masks:
             self._mask_covmat(masks)
             
             
-    def mask_scale(self, spectra_to_cut, min_scale=-np.inf, max_scale=np.inf):
+    def mask_scale(self, measurements_to_cut, min_scale=-np.inf, max_scale=np.inf):
         masks = []
         #go through the spectra and covmat, masking out the bad values.
-        for spectrum in self.spectra:
-            mask = np.ones(len(spectrum.value),dtype=bool)
-            if (spectra_to_cut!="all") and (spectrum.name not in spectra_to_cut):
+        for measurement in self.measurements:
+            mask = np.ones(len(measurement.value),dtype=bool)
+            if (spectra_to_cut!="all") and (measurement.name not in measurements_to_cut):
                 masks.append(mask)
             else:
                 #nb this will not work for NaN!
-                mask = (spectrum.angle > min_scale) & (spectrum.angle < max_scale) 
-                spectrum.apply_mask(mask)            
-                print("Masking {} values in {} because they had ell or theta outside ({},{})".format(mask.size-mask.sum(), spectrum.name, min_scale, max_scale))
+                mask = (measurement.angle > min_scale) & (measurement.angle < max_scale) 
+                measurement.apply_mask(mask)
+                print("Masking {} values in {} because they had ell or theta outside ({},{})".format(mask.size-mask.sum(), measurement.name, min_scale, max_scale))
                 #record the mask vector as we will need it to mask the covmat
                 masks.append(mask)
 
@@ -758,17 +758,17 @@ class TwoPointFile(object):
         data_sets = [d.lower() for d in data_sets]
         mask = []
         use = []
-        for spectrum in self.spectra:
-            if spectrum.name.lower() in data_sets:
+        for measurement in self.measurements:
+            if measurement.name.lower() in data_sets:
                 use.append(True)
-                mask.append(np.ones(spectrum.bin1.size, dtype=bool))
+                mask.append(np.ones(measurement.bin1.size, dtype=bool))
             else:
                 use.append(False)
-                mask.append(np.zeros(spectrum.bin1.size, dtype=bool))
+                mask.append(np.zeros(measurement.bin1.size, dtype=bool))
         for data_set in data_sets:
-            if not any(spectrum.name.lower()==data_set for spectrum in self.spectra):
+            if not any(measurement.name.lower()==data_set for measurement in self.measurements):
                 raise ValueError("Data set called {} not found in two-point data file.".format(data_set))
-        self.spectra = [s for (u,s) in zip(use,self.spectra) if u]
+        self.measurements = [s for (u,s) in zip(use,self.measurements) if u]
         if self.covmat is not None:
             mask = np.concatenate(mask)
             self.covmat = self.covmat[mask,:][:,mask]
@@ -777,7 +777,7 @@ class TwoPointFile(object):
 
         #This gets the covariance array in the right order (before any scale cuts etc.)
         cov = self.covmat_info.covmat
-        if self.covmat_info.names==[spec.name for spec in self.spectra]:
+        if self.covmat_info.names==[measurement.name for measurement in self.measurements]:
             #Ordering is already ok
             return cov
         print("Covariance matrix is not in the same order as the 2pt measurement extensions...doing some damn fiddly")
@@ -792,18 +792,20 @@ class TwoPointFile(object):
         assert cov_ends[-1]==cov.shape[0]
 
         total_l=0
-        spec_inds=[]
-        spec_names = [spec.name for spec in self.spectra]
-        for spectrum in self.spectra:
-            spec_inds.append(cov_names.index(spectrum.name))
-            total_l+=cov_lengths[cov_names.index(spectrum.name)]
+        meas_inds=[]
+        meas_names = [measurement.name for measurement in self.measurements]
+        for measurement in self.measurements:
+            meas_inds.append(cov_names.index(measurement.name))
+            total_l+=cov_lengths[cov_names.index(measurement.name)]
         cov_out=np.zeros((total_l,total_l))
         start_i=0
 
-        for ti,ind_i in zip(spec_names,spec_inds):
+        for ti,ind_i in zip(meas_names,meas_inds):
             start_j=0
-            for tj,ind_j in zip(spec_names,spec_inds):
-                cov_out[start_i:start_i+cov_lengths[ind_i],start_j:start_j+cov_lengths[ind_j]]=cov[cov_starts[ind_i]:cov_ends[ind_i],cov_starts[ind_j]:cov_ends[ind_j]]
+            for tj,ind_j in zip(meas_names,meas_inds):
+                cov_out[start_i:start_i+cov_lengths[ind_i],
+                        start_j:start_j+cov_lengths[ind_j]] = cov[cov_starts[ind_i]:cov_ends[ind_i],
+                                                                  cov_starts[ind_j]:cov_ends[ind_j]]
                 start_j+=cov_lengths[ind_j]
             start_i+=cov_lengths[ind_i]
         return cov_out
