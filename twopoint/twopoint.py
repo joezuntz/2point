@@ -1,7 +1,10 @@
 from astropy.io import fits
 import astropy.units
 from astropy.table import Table
-from .enum34 import Enum
+try:
+    from .enum34 import Enum
+except ValueError:
+    from enum34 import Enum
 import numpy as np
 import copy
 #FITS header keyword indicating 2-point data
@@ -201,6 +204,7 @@ class CountMeasurement(object):
         self.value = counts
         self.metadata = metadata
         self.extra_cols = extra_cols
+        self.measurement_type = 'count'
 
     @classmethod
     def from_fits(cls, extension, covmat_info=None):
@@ -296,6 +300,7 @@ class SpectrumMeasurement(object):
         self.angle_unit = angle_unit
         self.dv_index=None #This is the index in the datavector, will be populated when used in TwoPointFile
         self.extra_cols = extra_cols
+        self.measurement_type='2pt'
 
     def __str__(self):
         return "<Spectrum: {}>".format(self.name)
