@@ -164,11 +164,28 @@ class NumberDensity(object):
         return extension        
         
 class CountMeasurement(object):
-    def __init__(self, name, kernel, counts, z_lims, lambda_lims,
-        metadata=None, extra_cols=None):
+    def __init__(self, name, kernel, counts, z_bins, lambda_bins, 
+        z_lims, lambda_lims, metadata=None, extra_cols=None, sigma_z_coeffs=None):
+        """ Class for storing/reading/writing cluster count information
+        in the below, num_z = number of cluster redshift bins, num_lambda = 
+        number of richness bins
+        @param name            Name of the measurement e.g. 'cluster_counts' or 'Dave'
+        @param kernel          Name of the cluster n(z) extension
+        @param counts          Array of counts (length num_z * num_lambda)
+        @param z_bins          Array of z bin indices for each count
+        @param lambda_bins     Array of lambda bin indices for each count
+        @param z_lims          List of tuples with z_min, z_max for each count
+        @param lambda_lims     List tuples of (lambda_bin, lambda_max) for each count
+        @param metadata
+        @param extra_cols
+        @param sigma_z_coeffs  List of tuples (a_0, a_1, ...) for each lambda_bin,
+        sigma_z(z) = a_0 + a_1*(1+z) + ...
+        """
         self.name = name
         self.kernel = kernel
-        self.bin1 = np.arange(1, len(counts)+1)
+        self.bin1 = np.arange(len(counts))
+        self.z_bins = z_bins
+        self.lambda_bins = lambda_bins
         self.z_lims = z_lims
         self.lambda_lims = lambda_lims
         try:
@@ -197,6 +214,8 @@ class CountMeasurement(object):
         data = extension.data
         counts = data['VALUE']
         bins = data['BIN_1']
+        z_bins = data['Z_BIN']
+        lambda_bins = data['LAM_BIN']
         z_low = data['Z_L']
         z_high = data['Z_H']
         lambda_low = data['LAM_L']
@@ -215,7 +234,8 @@ class CountMeasurement(object):
             error = None
         else:
             error = covmat_info.get_error(name)
-        return CountMeasurement(name, kernel, counts, z_lims, lambda_lims, metadata=metadata)
+        return CountMeasurement(name, kernel, counts, z_bins, lambda_bins, 
+            z_lims, lambda_lims, metadata=metadata)
 
     def to_fits(self):
         header = fits.Header()
@@ -231,6 +251,8 @@ class CountMeasurement(object):
 
         columns = [
             fits.Column(name='BIN_1', array=self.bin1, format='K'),
+            fits.Column(name='Z_BIN', array=self.z_bins, format='K'),
+            fits.Column(name='LAM_BIN', array=self.lambda_bins, format='K'),
             fits.Column(name='Z_L', array=np.array([ z[0] for z in self.z_lims ]), format='D'),
             fits.Column(name='Z_H', array=np.array([ z[1] for z in self.z_lims ]), format='D'),
             fits.Column(name='LAM_L', array=np.array([ l[0] for l in self.lambda_lims ]), format='D'),

@@ -3,6 +3,9 @@ import twopoint
 import numpy as np
 
 
+def mock_gammat(gammat_base, i, j, k):
+    return gammat_base * (i+1) * (j+1) * (k+1)
+
 def test_cluster():
 
     #Let's imagine we have two cluster redshift bins and two source redshift bins
@@ -54,22 +57,21 @@ def test_cluster():
     #make some counts
     count_vals = np.random.random(n_lambda_bin * n_zbin_cluster)
     #save the cluster redshift bin and richness bin as extra columns
-    zcl_bin_array = np.zeros(len(count_vals)) 
+    zcl_bin_array = np.zeros(len(count_vals), dtype=int) 
     lambda_bin_array = np.zeros_like(zcl_bin_array)
     z_lims = []
     lambda_lims = []
     k=0
-    for zcl_ind in range(1, n_zbin_cluster+1):
-        for lambda_ind in range(1, n_lambda_bin+1):
+    for zcl_ind in range(n_zbin_cluster):
+        for lambda_ind in range(n_lambda_bin):
             zcl_bin_array[k] = zcl_ind
             lambda_bin_array[k] = lambda_ind
-            z_lims.append( ( zbin_edges_cluster[zcl_ind-1], zbin_edges_cluster[zcl_ind] ) )
-            lambda_lims.append( ( lambda_bin_edges[zcl_ind-1], lambda_bin_edges[zcl_ind] ) )
-    print z_lims
-    print lambda_lims
-    extra_cols = { "zcl_bin" : zcl_bin_array, "lambda_bin" : lambda_bin_array }
+            z_lims.append( ( zbin_edges_cluster[zcl_ind], zbin_edges_cluster[zcl_ind+1] ) )
+            lambda_lims.append( ( lambda_bin_edges[zcl_ind], lambda_bin_edges[zcl_ind+1] ) )
+            k+=1
+
     counts = twopoint.CountMeasurement( 'cluster_counts', 'nz_cluster', count_vals,
-        z_lims, lambda_lims, extra_cols = extra_cols)
+        zcl_bin_array, lambda_bin_array, z_lims, lambda_lims )
 
     #make some lensing profiles
     #total length of gamma_t measurements is n_theta * n_cluster_bin * n_source_bin
@@ -88,17 +90,18 @@ def test_cluster():
     for zcl_ind in range(n_zbin_cluster):
         for lambda_ind in range(n_lambda_bin):
             #cluster bin index is a combination of zcl_ind and lambda_ind
-            cl_ind = zcl_ind * n_lambda_bin + lambda_ind + 1
-            for zs_ind in range(1, n_source_bin + 1):
+            cl_ind = zcl_ind * n_lambda_bin + lambda_ind
+            for zs_ind in range(n_source_bin):
                 bin_pair_inds = np.arange(dv_start, dv_start + n_theta)
-                gammat_amp = zcl_ind * lambda_ind * zs_ind #Give bin combination its own amplitude
-                gammat_values[bin_pair_inds] = gammat_base * gammat_amp
+                gammat_values[bin_pair_inds] = mock_gammat(gammat_base, zcl_ind, lambda_ind, zs_ind)
                 bin1[bin_pair_inds] = cl_ind
                 bin2[bin_pair_inds] = zs_ind
                 angular_bin[bin_pair_inds] = np.arange(n_theta)
                 angle[bin_pair_inds] = theta_arcmin
                 zcl_bin[bin_pair_inds] = zcl_ind
                 lambda_bin[bin_pair_inds] = lambda_ind
+                dv_start += n_theta
+
     extra_cols = { "zcl_bin" : zcl_bin, "lambda_bin" : lambda_bin }
 
     #Now make SpectrumMeasurement object
@@ -116,22 +119,31 @@ def test_cluster():
 
     # Now read it back in and make sure its not nonsense.
     cluster_data = twopoint.TwoPointFile.from_fits(filename, covmat_name=None)
-    print("Read in the following measurements:", cluster_data.measurements)
+    print "Read in the following measurements:", cluster_data.measurements
     #Get some shit from the file
     #e.g. counts, richness and redshift lims
     count_data = cluster_data.get_measurement('cluster_counts')
-    print('cluster counts:', count_data.value)
-    print('cluster z bin edges:', count_data.z_lims)
-    print('cluster lambda bin edges:', count_data.lambda_lims)
+    print 'cluster counts:', count_data.value
+    print 'cluster z bin edges:', count_data.z_lims
+    print 'cluster lambda bin edges:', count_data.lambda_lims
+    print 'cluster z bins:', count_data.z_bins
+    print 'cluster lambda bins:', count_data.lambda_bins
+    i,j,k = 0,1,1
+    #Get the counts for cluster lens bin 1, lambda bin j
+    count_0_1_1 = count_data.value[ (count_data.z_bins==i)*(count_data.lambda_bins==j) ]
+    print ('counts for z bin %d, lambda bin %d:'%(i,j), count_0_1_1)
+    #check it's what we put in
+    np.testing.assert_almost_equal( count_0_1_1, count_vals[ i*n_lambda_bin + j ] )
+
     #Get the profile for cluster lens bin i, lambda bin j, source bin k
-    i,j,k = 1,2,2
     cgt = cluster_data.get_measurement('cluster_gamma_t')
-    cgt_1_2_2 = cgt.value[ (cgt.extra_cols["zcl_bin"] == i )
+    cgt_0_1_1 = cgt.value[ (cgt.extra_cols["zcl_bin"] == i )
                                * (cgt.extra_cols["lambda_bin"] == j )
                                * (cgt.bin2 == k ) ]
-    print('gamma_t for cluster z bin %d, lambda bin %d, source bin %d'%( i, j, k ) )
+    print 'gamma_t for cluster z bin %d, lambda bin %d, source bin %d:'%( i, j, k ) 
+    print cgt_0_1_1
     #check its what we put in
-    np.testing.assert_allclose( cgt_1_2_2, gammat_base * i * j * k )
+    np.testing.assert_allclose( cgt_0_1_1, mock_gammat(gammat_base, i, j, k) )
 
 if __name__=="__main__":
     test_cluster()
