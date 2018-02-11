@@ -6,7 +6,7 @@ import numpy as np
 import copy
 #FITS header keyword indicating 2-point data
 TWOPOINT_SENTINEL = "2PTDATA"
-COUNT_SENTINEL = "COUNTDATA"
+COUNT_SENTINEL = "CNTDATA"
 NZ_SENTINEL = "NZDATA"
 COV_SENTINEL = "COVDATA"
 window_types=["SAMPLE","CLBP"]
@@ -164,11 +164,23 @@ class NumberDensity(object):
         return extension        
         
 class CountMeasurement(object):
-    def __init__(self, name, kernel, counts=None,
+    def __init__(self, name, kernel, counts, z_lims, lambda_lims,
         metadata=None, extra_cols=None):
         self.name = name
         self.kernel = kernel
         self.bin1 = np.arange(1, len(counts)+1)
+        self.z_lims = z_lims
+        self.lambda_lims = lambda_lims
+        try:
+            assert len(self.z_lims) == len(counts)
+        except AssertionError as e:
+            print("z_lims needs to be the same length as counts")
+            raise(e)
+        try:
+            assert len(self.lambda_lims) == len(counts)
+        except AssertionError as e:
+            print("lambda_lims needs to be the same length as counts")
+            raise(e)
         self.value = counts
         self.metadata = metadata
         self.extra_cols = extra_cols
@@ -184,8 +196,14 @@ class CountMeasurement(object):
         #Now load the data
         data = extension.data
         counts = data['VALUE']
-        bins = data['BIN1']
-
+        bins = data['BIN_1']
+        z_low = data['Z_L']
+        z_high = data['Z_H']
+        lambda_low = data['LAM_L']
+        lambda_high = data['LAM_H']
+        z_lims = zip( z_low, z_high )
+        lambda_lims = zip( lambda_low, lambda_high )
+ 
         #check for metadata
         metadata={}
         for key in extension.header:
@@ -197,7 +215,7 @@ class CountMeasurement(object):
             error = None
         else:
             error = covmat_info.get_error(name)
-        return CountMeasurement(name, kernel, count, metadata=metadata)
+        return CountMeasurement(name, kernel, counts, z_lims, lambda_lims, metadata=metadata)
 
     def to_fits(self):
         header = fits.Header()
@@ -209,12 +227,17 @@ class CountMeasurement(object):
             #Check metadata doesn't share any keys with the stuff that's already in the header
             assert set(self.metadata.keys()).isdisjoint(set(header.keys()))
             for key,val in self.metadata.iteritems():
-                header[METADATA_PREFIX+key]=val #Use MD_ prefix so metadata entries can be easily recognised by from_fits
+                header[ METADATA_PREFIX + key ]=val #Use MD_ prefix so metadata entries can be easily recognised by from_fits
 
         columns = [
             fits.Column(name='BIN_1', array=self.bin1, format='K'),
+            fits.Column(name='Z_L', array=np.array([ z[0] for z in self.z_lims ]), format='D'),
+            fits.Column(name='Z_H', array=np.array([ z[1] for z in self.z_lims ]), format='D'),
+            fits.Column(name='LAM_L', array=np.array([ l[0] for l in self.lambda_lims ]), format='D'),
+            fits.Column(name='LAM_H', array=np.array([ l[1] for l in self.lambda_lims ]), format='D'),
             fits.Column(name='VALUE', array=self.value, format='D'),
         ]
+
         if self.extra_cols is not None:
             for (colname,arr) in self.extra_cols.iteritems():
                 columns.append(fits.Column(name='XTRA_'+colname, array=arr, format='D'))
@@ -786,7 +809,7 @@ class TwoPointFile(object):
     @classmethod
     def from_fits(cls, filename, covmat_name="COVMAT"):
         fitsfile = fits.open(filename)
-        spectra = []
+        measurements = []
         kernels = []
         windows = {}
 
@@ -807,7 +830,9 @@ class TwoPointFile(object):
         #in the header being "T"
         for extension in fitsfile:
             if extension.header.get(TWOPOINT_SENTINEL):
-                spectra.append(SpectrumMeasurement.from_fits(extension, covmat_info))
+                measurements.append(SpectrumMeasurement.from_fits(extension, covmat_info))
+            elif extension.header.get(COUNT_SENTINEL):
+                measurements.append(CountMeasurement.from_fits(extension, covmat_info))
 
         #Each spectrum needs kernels, usually some n(z).
         #These were read from headers when we loaded the 2pt data above above.
@@ -820,14 +845,13 @@ class TwoPointFile(object):
         #that we just use a single sample value of ell or theta instead.
         #If the spectra required it (according to the header) then we also
         #need to load those in.
-        for spectrum in spectra:
-            if spectrum.windows not in window_types and spectrum.windows not in windows:
-                windows[spectrum.windows] = cls._windows_from_fits(fitsfile[windows])
+        for m in measurements:
+            if hasattr(m, 'windows'):
+                if m.windows not in window_types and m.windows not in windows:
+                    windows[m.windows] = cls._windows_from_fits(fitsfile[windows])
 
         #return a new TwoPointFile object with the data we have just loaded
-        return cls(spectra, kernels, windows, covmat_info)
-
-
+        return cls(measurements, kernels, windows, covmat_info)
                 
     
     @classmethod

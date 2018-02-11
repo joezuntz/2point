@@ -5,14 +5,16 @@ import numpy as np
 
 def test_cluster():
 
-    #Let's imagine we have two lens redshift bins and two source redshift bins
+    #Let's imagine we have two cluster redshift bins and two source redshift bins
     #Each lens redshift bins has three richness bins.
     #We need to generate the lensing profiles and counts.
     #Are measurements should iterate first source bin, then richness bin, then 
     #cluster redshit bin
     #Each cluster redshift,richness bin has a boost factor two...
-    n_zbin_cluster = 2
-    n_lambda_bin = 3
+    zbin_edges_cluster = [0.15, 0.3, 0.5]
+    lambda_bin_edges = [ 5, 20, 50, 100 ]
+    n_zbin_cluster = len(zbin_edges_cluster) - 1
+    n_lambda_bin = len(lambda_bin_edges) - 1
     n_cluster_bin = n_zbin_cluster * n_lambda_bin
     n_source_bin = 2
 
@@ -32,8 +34,8 @@ def test_cluster():
     cluster_sigmas = [ 0.03 ] * n_cluster_bin
     cluster_nzs = []
     k=0
-    for i in range(n_zbin_cluster):
-        for j in range(n_lambda_bin):    
+    for zcl_ind in range(n_zbin_cluster):
+        for lambda_ind in range(n_lambda_bin):    
             mu,sigma = cluster_z_means[k], cluster_sigmas[k]
             cluster_nzs.append( np.exp(-( (z_mid-mu)**2 / ( 2.0 * sigma**2 ) ) ) )
     #make number density object
@@ -52,16 +54,22 @@ def test_cluster():
     #make some counts
     count_vals = np.random.random(n_lambda_bin * n_zbin_cluster)
     #save the cluster redshift bin and richness bin as extra columns
-    zcl_bin = np.zeros(len(count_vals))
-    lambda_bin = np.zeros_like(zcl_bin)
+    zcl_bin_array = np.zeros(len(count_vals)) 
+    lambda_bin_array = np.zeros_like(zcl_bin_array)
+    z_lims = []
+    lambda_lims = []
     k=0
     for zcl_ind in range(1, n_zbin_cluster+1):
         for lambda_ind in range(1, n_lambda_bin+1):
-            zcl_bin[k] = zcl_ind
-            lambda_bin[k] = lambda_ind
-    extra_cols = { "zcl_bin" : zcl_bin, "lambda_bin" : lambda_bin }
+            zcl_bin_array[k] = zcl_ind
+            lambda_bin_array[k] = lambda_ind
+            z_lims.append( ( zbin_edges_cluster[zcl_ind-1], zbin_edges_cluster[zcl_ind] ) )
+            lambda_lims.append( ( lambda_bin_edges[zcl_ind-1], lambda_bin_edges[zcl_ind] ) )
+    print z_lims
+    print lambda_lims
+    extra_cols = { "zcl_bin" : zcl_bin_array, "lambda_bin" : lambda_bin_array }
     counts = twopoint.CountMeasurement( 'cluster_counts', 'nz_cluster', count_vals,
-        extra_cols = extra_cols)
+        z_lims, lambda_lims, extra_cols = extra_cols)
 
     #make some lensing profiles
     #total length of gamma_t measurements is n_theta * n_cluster_bin * n_source_bin
@@ -108,12 +116,20 @@ def test_cluster():
 
     # Now read it back in and make sure its not nonsense.
     cluster_data = twopoint.TwoPointFile.from_fits(filename, covmat_name=None)
-    #Get the gamma_t measurement for cluster bin i, richness bin j, source bin k
+    print("Read in the following measurements:", cluster_data.measurements)
+    #Get some shit from the file
+    #e.g. counts, richness and redshift lims
+    count_data = cluster_data.get_measurement('cluster_counts')
+    print('cluster counts:', count_data.value)
+    print('cluster z bin edges:', count_data.z_lims)
+    print('cluster lambda bin edges:', count_data.lambda_lims)
+    #Get the profile for cluster lens bin i, lambda bin j, source bin k
     i,j,k = 1,2,2
     cgt = cluster_data.get_measurement('cluster_gamma_t')
     cgt_1_2_2 = cgt.value[ (cgt.extra_cols["zcl_bin"] == i )
                                * (cgt.extra_cols["lambda_bin"] == j )
                                * (cgt.bin2 == k ) ]
+    print('gamma_t for cluster z bin %d, lambda bin %d, source bin %d'%( i, j, k ) )
     #check its what we put in
     np.testing.assert_allclose( cgt_1_2_2, gammat_base * i * j * k )
 
