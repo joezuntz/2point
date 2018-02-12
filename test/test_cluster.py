@@ -165,6 +165,7 @@ def test_cluster():
     pylab.xlabel("z")
     pylab.ylabel("sigma(z)")
     pylab.savefig("test_cluster_sigmaz.png")
+    pylab.clf()
    
 
     #Now some gamma_t stuff...
@@ -172,6 +173,14 @@ def test_cluster():
     #Find the number of cluster and source bins
     print 'number of cluster bins:', cgt.num_bin1
     print 'number of source bins:', cgt.num_bin2
+    #Get the source n(z) data
+    nz_source_data = cluster_data.get_kernel(cgt.kernel2)
+    #plot the n(z) for source bin 2
+    pylab.plot( nz_source_data.z, nz_source_data.nzs[1] )
+    pylab.xlabel('z')
+    pylab.ylabel('n(z)')
+    pylab.savefig("test_cluster_source_nofz.png")
+
     #Get the profile for cluster lens bin i, lambda bin j, source bin k
     
     cgt_0_1_1 = cgt.value[ (cgt.extra_cols["zcl_bin"] == i )
