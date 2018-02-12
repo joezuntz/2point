@@ -14,6 +14,7 @@ NZ_SENTINEL = "NZDATA"
 COV_SENTINEL = "COVDATA"
 window_types=["SAMPLE","CLBP"]
 METADATA_PREFIX="MD_"
+SIGMAZ_PREFIX="SZ_"
 
 #Please do not add things to this list
 ANGULAR_UNIT_TYPES=[
@@ -174,14 +175,14 @@ class CountMeasurement(object):
         number of richness bins
         @param name            Name of the measurement e.g. 'cluster_counts' or 'Dave'
         @param kernel          Name of the cluster n(z) extension
-        @param counts          Array of counts (length num_z * num_lambda)
-        @param z_bins          Array of z bin indices for each count
-        @param lambda_bins     Array of lambda bin indices for each count
+        @param counts          Numpy array of counts (length num_z * num_lambda)
+        @param z_bins          Numpy array of z bin indices for each count
+        @param lambda_bins     Numpy array of lambda bin indices for each count
         @param z_lims          List of tuples with z_min, z_max for each count
         @param lambda_lims     List tuples of (lambda_bin, lambda_max) for each count
         @param metadata
         @param extra_cols
-        @param sigma_z_coeffs  List of tuples (a_0, a_1, ...) for each lambda_bin,
+        @param sigma_z_coeffs  List of lists (a_0, a_1, ...) for each lambda_bin,
         sigma_z(z) = a_0 + a_1*(1+z) + ...
         """
         self.name = name
@@ -191,6 +192,10 @@ class CountMeasurement(object):
         self.lambda_bins = lambda_bins
         self.z_lims = z_lims
         self.lambda_lims = lambda_lims
+        self.num_z_bins = len(np.unique(self.z_lims))
+        self.num_lambda_bins = len(np.unique(self.lambda_bins))
+        self.sigma_z_coeffs = sigma_z_coeffs
+        #Do some checks on the length of arguments
         try:
             assert len(self.z_lims) == len(counts)
         except AssertionError as e:
@@ -201,6 +206,14 @@ class CountMeasurement(object):
         except AssertionError as e:
             print("lambda_lims needs to be the same length as counts")
             raise(e)
+        if self.sigma_z_coeffs is not None:
+            #Check there is a list of sigma_z coefficients for each lambda bin
+            try:
+                assert len(self.sigma_z_coeffs) == self.num_lambda_bins
+            except AssertionError as e:
+                print("sigma_z_coeffs should be the same length as the number of lambda_bins")
+                raise(e)
+
         self.value = counts
         self.metadata = metadata
         self.extra_cols = extra_cols
@@ -233,13 +246,30 @@ class CountMeasurement(object):
             if key.startswith(METADATA_PREFIX):
                 metadata[key.replace(METADATA_PREFIX,"")] = extension.header[key]
 
+        #check for sigma(z) information
+        num_lambda_bin = len(np.unique(lambda_bins))
+        sigma_z_coeffs = []
+        no_sigma_z_info=True
+        for lamba_bin in range(num_lambda_bin):
+            sigma_z_coeffs.append([])
+            for i in range(100):
+                key = "%s_%d_%d"%( SIGMAZ_PREFIX, lambda_bin, i )
+                try:
+                    kernel = extension.header[key]
+                    sigma_z_coeffs[i].append(kernel)
+                    no_sigma_z_info=False
+                except KeyError:
+                    break
+        if no_sigma_z_info:
+            sigma_z_coeffs = None
+
         #Load a chunk of the covariance matrix too if present.
         if covmat_info is None:
             error = None
         else:
             error = covmat_info.get_error(name)
         return CountMeasurement(name, kernel, counts, z_bins, lambda_bins, 
-            z_lims, lambda_lims, metadata=metadata)
+            z_lims, lambda_lims, metadata=metadata, sigma_z_coeffs=sigma_z_coeffs)
 
     def to_fits(self):
         header = fits.Header()
@@ -267,6 +297,13 @@ class CountMeasurement(object):
         if self.extra_cols is not None:
             for (colname,arr) in self.extra_cols.iteritems():
                 columns.append(fits.Column(name='XTRA_'+colname, array=arr, format='D'))
+
+        #If we have polynomial sigma_z(z) coefficients, we need to save these to the header
+        if self.sigma_z_coeffs is not None:
+            for lambda_bin in range(self.num_lambda_bins):
+                for i,coeff in enumerate(self.sigma_z_coeffs[lambda_bin]):
+                    key = "%s_%d_%d"%( SIGMAZ_PREFIX, lambda_bin, i )
+                    header[key] = coeff
 
         extension = fits.BinTableHDU.from_columns(columns, header=header)
         return extension
