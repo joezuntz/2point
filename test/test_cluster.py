@@ -1,12 +1,27 @@
 #Tests to make sure library works for cluster counts
 import twopoint
 import numpy as np
-
+import pylab
 
 def mock_gammat(gammat_base, i, j, k):
     return gammat_base * (i+1) * (j+1) * (k+1)
 
 def test_cluster():
+
+    #This script demonstrates how to write and read a cluster counts + lensing data file
+    #This file contains
+    #i) n(z) information for clusters and sources
+    #ii) gamma_t(theta) measurements for all cluster bin source bin pairs
+    #iii) Counts for each cluster bin
+    #
+    #It aims to contain all the information from the catalogs required
+    #to compute the theory prediciton. So for example, in the count extension,
+    #there are redshift and lambda bin limits required for the redshift and lambda
+    #selection functions. And optionally one can add polynomial coefficients for 
+    #sigma(z) = a_i * ( 1 + z )^i 
+
+    #We also demonstrate reading this file back in, and accessing various measurements
+    #or useful information.
 
     #Let's imagine we have two cluster redshift bins and two source redshift bins
     #Each lens redshift bins has three richness bins.
@@ -69,9 +84,17 @@ def test_cluster():
             z_lims.append( ( zbin_edges_cluster[zcl_ind], zbin_edges_cluster[zcl_ind+1] ) )
             lambda_lims.append( ( lambda_bin_edges[zcl_ind], lambda_bin_edges[zcl_ind+1] ) )
             k+=1
+    #For photometric clusters, theory predictions for counts require not only the selection function in photometric
+    #redshift, but also P(true z | photo-z). In Y1, this was parameterised as Gaussian
+    #centered on 0., with width sigma(z) = \Sum_i a_i * z^i, for each richness bin. This
+    #can be passed to CountMeasurement as n_lambda_bin length list of lists of coefficients
+    #e.g. these are for the first three richness bins from the Y1 conuts paper
+    sigma_z_coeffs = [ [-1.18159413,  1.1060884,  -0.24906221,  0.02157702 ],
+                       [-1.22925508,  1.1175665, -0.25085154,  0.02129638],
+                       [-1.26122355,  1.12986624, -0.25394517,  0.0212711] ]
 
     counts = twopoint.CountMeasurement( 'cluster_counts', 'nz_cluster', count_vals,
-        zcl_bin_array, lambda_bin_array, z_lims, lambda_lims )
+        zcl_bin_array, lambda_bin_array, z_lims, lambda_lims, sigma_z_coeffs=sigma_z_coeffs )
 
     #make some lensing profiles
     #total length of gamma_t measurements is n_theta * n_cluster_bin * n_source_bin
@@ -134,9 +157,23 @@ def test_cluster():
     print ('counts for z bin %d, lambda bin %d:'%(i,j), count_0_1_1)
     #check it's what we put in
     np.testing.assert_almost_equal( count_0_1_1, count_vals[ i*n_lambda_bin + j ] )
+    #We also put sigma_z info in there - let's evaluate sigma_z as a function of redshift 
+    #for lambda bin 0, and make a plot
+    z_vals = np.linspace(0.,1.,100)
+    sigma_z_0 = count_data.get_sigma_z(0, z_vals)
+    pylab.plot(z_vals, sigma_z_0)
+    pylab.xlabel("z")
+    pylab.ylabel("sigma(z)")
+    pylab.savefig("test_cluster_sigmaz.png")
+   
 
-    #Get the profile for cluster lens bin i, lambda bin j, source bin k
+    #Now some gamma_t stuff...
     cgt = cluster_data.get_measurement('cluster_gamma_t')
+    #Find the number of cluster and source bins
+    print 'number of cluster bins:', cgt.num_bin1
+    print 'number of source bins:', cgt.num_bin2
+    #Get the profile for cluster lens bin i, lambda bin j, source bin k
+    
     cgt_0_1_1 = cgt.value[ (cgt.extra_cols["zcl_bin"] == i )
                                * (cgt.extra_cols["lambda_bin"] == j )
                                * (cgt.bin2 == k ) ]

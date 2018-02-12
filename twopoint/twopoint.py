@@ -183,7 +183,7 @@ class CountMeasurement(object):
         @param metadata
         @param extra_cols
         @param sigma_z_coeffs  List of lists (a_0, a_1, ...) for each lambda_bin,
-        sigma_z(z) = a_0 + a_1*(1+z) + ...
+        sigma_z(z) = a_0 + a_1*z + a_2*z^2 etc.
         """
         self.name = name
         self.kernel = kernel
@@ -199,19 +199,25 @@ class CountMeasurement(object):
         try:
             assert len(self.z_lims) == len(counts)
         except AssertionError as e:
-            print("z_lims needs to be the same length as counts")
+            print("************")
+            print("Bad argument: z_lims needs to be the same length as counts")
+            print("************")
             raise(e)
         try:
             assert len(self.lambda_lims) == len(counts)
         except AssertionError as e:
-            print("lambda_lims needs to be the same length as counts")
+            print("************")
+            print("Nuh uh: lambda_lims needs to be the same length as counts")
+            print("************")
             raise(e)
         if self.sigma_z_coeffs is not None:
             #Check there is a list of sigma_z coefficients for each lambda bin
             try:
                 assert len(self.sigma_z_coeffs) == self.num_lambda_bins
             except AssertionError as e:
-                print("sigma_z_coeffs should be the same length as the number of lambda_bins")
+                print("************")
+                print("hmm...Error: sigma_z_coeffs should be the same length as the number of lambda_bins")
+                print("************")
                 raise(e)
 
         self.value = counts
@@ -255,8 +261,8 @@ class CountMeasurement(object):
             for i in range(100):
                 key = "%s_%d_%d"%( SIGMAZ_PREFIX, lambda_bin, i )
                 try:
-                    kernel = extension.header[key]
-                    sigma_z_coeffs[i].append(kernel)
+                    sigma_z = extension.header[key]
+                    sigma_z_coeffs[lambda_bin].append(sigma_z)
                     no_sigma_z_info=False
                 except KeyError:
                     break
@@ -270,6 +276,12 @@ class CountMeasurement(object):
             error = covmat_info.get_error(name)
         return CountMeasurement(name, kernel, counts, z_bins, lambda_bins, 
             z_lims, lambda_lims, metadata=metadata, sigma_z_coeffs=sigma_z_coeffs)
+
+    def get_sigma_z(self, lambda_bin, z):
+        #get polynomial coefficients for this richness bin
+        coeffs = self.sigma_z_coeffs[lambda_bin]
+        #return the polynomial
+        return np.polyval(coeffs, z)
 
     def to_fits(self):
         header = fits.Header()
@@ -316,6 +328,7 @@ class SpectrumMeasurement(object):
         """extra cols is a dictionary of tuples (n"""
         self.name = name
         self.bin1, self.bin2 = bins
+        self.num_bin1, self.num_bin2 = len(np.unique(self.bin1)), len(np.unique(self.bin2))
         self.bin_pairs = self.get_bin_pairs()  #unique bin pairs
         self.type1, self.type2 = types
         self.kernel1, self.kernel2 = kernels
@@ -391,12 +404,8 @@ class SpectrumMeasurement(object):
     def auto_bins(self):
         return self.bin1==self.bin2
 
-
     def __len__(self):
         return len(self.value)
-
-    def nbin(self):
-        return np.max([self.bin1.max(), self.bin2.max()])
 
     def get_pair(self, bin1, bin2):
         w = (self.bin1==bin1) & (self.bin2==bin2)
