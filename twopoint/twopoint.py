@@ -250,7 +250,7 @@ class CountMeasurement(object):
         num_lambda_bin = len(np.unique(lambda_bins))
         sigma_z_coeffs = []
         no_sigma_z_info=True
-        for lamba_bin in range(num_lambda_bin):
+        for lambda_bin in range(num_lambda_bin):
             sigma_z_coeffs.append([])
             for i in range(100):
                 key = "%s_%d_%d"%( SIGMAZ_PREFIX, lambda_bin, i )
