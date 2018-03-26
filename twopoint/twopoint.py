@@ -209,6 +209,11 @@ class SpectrumMeasurement(object):
                 unique_pairs.append(p)
         return unique_pairs
 
+    def canonical_order(self):
+        # order by b1, then b2, then angle
+        order = np.lexsort([self.bin1, self.bin2, self.angular_bin])
+        return order
+
     def is_real_space(self):
         return self.type1.value.endswith("R") or self.type2.value.endswith("R")
 
@@ -564,6 +569,21 @@ class TwoPointFile(object):
             masks.append(mask)
         if masks:
             self._mask_covmat(masks)
+
+    def reorder_canonical(self):
+        masks = []
+        print("Reordering all data")
+        n = 0
+        for spectrum in self.spectra:
+            mask = spectrum.canonical_order()
+            spectrum.apply_mask(mask)
+            masks.append(mask+n)
+            n += len(mask)
+        if masks:
+            self._mask_covmat(masks)
+
+    
+
 
     def mask_indices(self, spectrum_name, indices):
         s = self.get_spectrum(spectrum_name)
@@ -925,7 +945,6 @@ class SpectrumCovarianceBuilder(object):
 
 
         return spectra, covmat_info
-
 
 
 
