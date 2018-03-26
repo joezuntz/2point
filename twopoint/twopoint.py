@@ -319,7 +319,6 @@ class SpectrumMeasurement(object):
                 colname = (c.replace("XTRA_", "")).lower()
                 extra_cols[colname] = data[c]
         if not found_extra_cols:
-            print 'found no extra columns'
             extra_cols=None
 
         #check for metadata
@@ -463,7 +462,6 @@ class CovarianceMatrixInfo(object):
             spec_array = []
             #check this realisation has right number,type,length of spectra 
             for i_spec in range(num_spec):
-                print i_real,i_spec
                 assert spec_lists[i_real][i_spec].name == names[i_spec]
                 assert len(spec_lists[i_real][i_spec].value) == lengths[i_spec]
                 spec_array+=list(spec_lists[i_real][i_spec].value)
