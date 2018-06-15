@@ -142,3 +142,17 @@ WINDATA Extension
 -----------------
 
 We have not yet considered this extension properly. At the moment only WINDOWS=sample is accepted.
+
+Plot the correlation functions
+--------------------------------
+
+This function will plot the correlation functions like xi_+, xi_-, gammat_t, w(theta) and the redshift distributions. You can use it by loading the two point file into the TwoPointFile class and call the plotting function in the following way: 
+```
+T = twopoint.TwoPointFile.from_fits(filename + '.fits')
+T.plots(filename, colormap = 'viridis', savepdf = False, latex = True)
+```
+
+These are the default options. You can change the colormap, choose to also save pdf's besides png's and turn off the latex font. Here are some example plots that this function produces: 
+
+![alt text](xip.png)
+![alt text](source.png)
