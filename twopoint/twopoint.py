@@ -792,8 +792,14 @@ class TwoPointFile(object):
 
     def plots(self, root, colormap='viridis', savepdf=False, latex = True, callback=None):
         """
-        latex: True if want to save with latex font. It will be slower. Set to false to test plot.
+        Makes plot of each for your spectra. 
+        Options:
+        - root: Name of the output plots.
+        - colormap: Colormap used for the plots.
+        - savepdf: True if you want to save pdf too, besides png.
+        - latex: True if want to save with latex font. It will be slower. Set to false to test plot.
         """
+
         import matplotlib.pyplot as plt
         from matplotlib import ticker
         if latex:
