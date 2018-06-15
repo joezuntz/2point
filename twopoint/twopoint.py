@@ -790,44 +790,101 @@ class TwoPointFile(object):
     def _windows_from_fits(cls, extension):
         raise NotImplementedError("non-sample window functions in ell/theta")
 
-    def plots(self, root, callback=None):
+    def plots(self, root, colormap='viridis', savepdf=False, latex = True, callback=None):
+        """
+        latex: True if want to save with latex font. It will be slower. Set to false to test plot.
+        """
         import matplotlib.pyplot as plt
+        from matplotlib import ticker
+        if latex:
+            plt.rc('text', usetex=True)
+            plt.rc('font', family='serif')
+
         for spectrum in self.spectra:
+            if (spectrum.type1 == spectrum.type2 == Types.galaxy_shear_plus_real):
+                corr_type = 'xip'
+                label = r"$\xi_+$"
+                color = plt.get_cmap(colormap)(0)
+            
+            if (spectrum.type1 == spectrum.type2 == Types.galaxy_shear_minus_real):
+                corr_type = 'xim'
+                label = r"$\xi_-$"
+                color = plt.get_cmap(colormap)(0.2)
+
+            if (spectrum.type1 == Types.galaxy_position_real)&(spectrum.type2 == Types.galaxy_shear_plus_real):
+                corr_type = 'gt'
+                label = r"$\gamma_t$"
+                color = plt.get_cmap(colormap)(0.4)
+
+            if (spectrum.type1 == spectrum.type2 == Types.galaxy_position_real):
+                corr_type = 'wtheta'
+                label = r"$w(\theta)$"
+                color = plt.get_cmap(colormap)(0.6)
+
             name = "{}_{}.png".format(root,spectrum.name)
             pairs = spectrum.bin_pairs
-            n = len(pairs)
-            if n==0:
+            npairs = len(pairs)
+            bins1 = np.transpose(pairs)[0]
+            bins2 = np.transpose(pairs)[1]
+            nbins1 = np.max(bins1)
+            nbins2 = np.max(bins2)
+            if npairs==0:
                 continue
 
-            plt.figure(figsize=(7,5*n))
+            if not all(bins1 == bins2):
+                fig, ax = plt.subplots(nbins2, nbins1, figsize=(1.6*nbins1, 1.6*nbins2), sharey=True, sharex=True)
+
+            if all(bins1 == bins2):
+                fig, ax = plt.subplots(1, nbins1, figsize=(1.6*nbins1, 2), sharey=True, sharex=True)
+                ax = np.diag(ax)
+
             for k,pair in enumerate(pairs):
-                plt.subplot(n,1,k+1)
-                i,j=pair
+                i,j = pair
                 theta, xi = spectrum.get_pair(i,j)
                 error = spectrum.get_error(i,j)
-                plt.errorbar(theta, abs(xi), error, fmt='k.')
-                plt.title("Pair ({},{})".format(i,j))
-                plt.gca().set_xscale('log', nonposx='clip')
-                plt.gca().set_yscale('log', nonposy='clip')
-                plt.ylabel(r"$\theta * \xi / 10^{-4}$")
-                plt.xlabel(r"$\theta$")
-                plt.ylim(1e-6,3e-4)
+                
+                ax[j-1][i-1].errorbar(theta, abs(xi), yerr = error, fmt = 'o', capsize=1.5, markersize=3, color = color, mec = color, elinewidth=1.)
+                ax[j-1][i-1].text(0.85, 0.85, "{},{}".format(i,j), horizontalalignment='center',
+                                  verticalalignment='center', transform=ax[j-1][i-1].transAxes, fontsize=12)
+                ax[j-1][i-1].set_xscale('log', nonposx='clip')
+                ax[j-1][i-1].set_yscale('log', nonposy='clip')
+                ax[j-1][i-1].xaxis.set_major_formatter(ticker.FormatStrFormatter('$%d$'))
+                
+                if (not all(bins1 == bins2))&(j == nbins2):
+                    ax[j-1][i-1].set_xlabel(r"$\theta$ [arcmin]")
+                if all(bins1 == bins2):
+                    ax[j-1][i-1].set_xlabel(r"$\theta$ [arcmin]")
+                if i == 1:
+                    ax[j-1][i-1].set_ylabel(label)
+
+                if (not all(bins1 == bins2))&(corr_type!='gt')&(j>i):                    
+                    fig.delaxes(ax[i-1, j-1])
+
             print("Saving {}".format(name))
-            plt.savefig(name)
+            plt.tight_layout()
+            plt.savefig(name, bbox_inches='tight', dpi=400)
+            if savepdf:
+                plt.savefig(name + '.pdf', bbox_inches='tight')
             plt.close()
 
         for kernel in self.kernels:
             name = "{}_{}.png".format(root,kernel.name)
             plt.figure()
-            for nz in kernel.nzs:
-                plt.plot(kernel.z, nz)
+            fig, ax = plt.subplots(1, 1, figsize=(5,3))
+            for i,nz in enumerate(kernel.nzs):
+                color = color = plt.get_cmap(colormap)(0.2*i)
+                ax.plot(kernel.z, nz, lw = 1.5, color = color)
+                ax.fill_between(kernel.z, 0, nz, color = color, alpha = 0.2)
+            ax.set_xlabel('Redshift')
+            ax.set_ylabel('Normalized counts')
+            ax.set_xlim(0,2)
+            ax.set_ylim(bottom=0)
+            plt.tight_layout()
             print("Saving {}".format(name))
-            plt.savefig(name)
+            plt.savefig(name, bbox_inches='tight', dpi=400)
+            if savepdf:
+                plt.savefig(name + '.pdf',bbox_inches='tight')
             plt.close()
-
-
-
-            
 
 
 
