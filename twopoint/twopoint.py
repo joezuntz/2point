@@ -889,7 +889,7 @@ class TwoPointFile(object):
                     name_pickle = "{}_{}.pickle".format(root,spectrum.name)
                     fig = pl.load(open(name_pickle,'rb'))
                     if remove_pickle: 
-                        os.
+                        os.system('rm %s'%name_pickle)
                     ax = fig.axes
                     ax = np.array(ax)
                     if len(ax) == nbins1:
