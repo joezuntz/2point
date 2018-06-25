@@ -4,6 +4,8 @@ from astropy.table import Table
 from .enum34 import Enum
 import numpy as np
 import copy
+import os
+
 #FITS header keyword indicating 2-point data
 TWOPOINT_SENTINEL = "2PTDATA"
 NZ_SENTINEL = "NZDATA"
@@ -790,36 +792,54 @@ class TwoPointFile(object):
     def _windows_from_fits(cls, extension):
         raise NotImplementedError("non-sample window functions in ell/theta")
 
-    def plots(self, root, colormap='viridis', savepdf=False, latex = True, callback=None):
+    def plots(self, root, colormap='viridis', savepdf=False, latex=True, plot_spectrum=True, plot_kernel=True, plot_cov=True, cov_vmin=None, save_pickle = False, load_pickle = False, remove_pickle = True,label_legend = '', callback=None):
         """
-        Makes plot of each for your spectra. 
+        Makes plot of each for your spectra, kernels and covariance. Allows you to compare the spectra of different files. 
         Options:
         - root: Name of the output plots.
         - colormap: Colormap used for the plots.
         - savepdf: True if you want to save pdf too, besides png.
         - latex: True if want to save with latex font. It will be slower. Set to false to test plot.
+        - plot_spectrum, plot_kernel, plot_cov: whether or not to make this plots
+        - cov_vmin = minimum value for the colorbar in the covariance plot.
+        - plot_spectrum, plot_kernel and plot_cov are boolean variables that are true if you want to make these plots.
+        - save_pickle: if true it saves a pickle file to edit be able to compare different files.
+        - load_pickle: if true, it will continue the plot starting from a pickle file.
+        - remove_pickle: set to true if you want to keep this file to edit your plot afterwards.
+        - label_legend: name that will appear in the legend when comparing different files.
         """
 
         import matplotlib.pyplot as plt
         from matplotlib import ticker
+        import pickle as pl
+
         if latex:
             plt.rc('text', usetex=True)
             plt.rc('font', family='serif')
 
-        for spectrum in self.spectra:
+        def savefig(name):
+            print("Saving {}".format(name))
+            plt.savefig(name, bbox_inches='tight', dpi=400)
+            if savepdf:
+                plt.savefig(name + '.pdf',bbox_inches='tight')
+
+        def corr_names(spectrum):
+            '''
+            Get latex labels and colors for each kind of correlation.
+            '''
             if (spectrum.type1 == spectrum.type2 == Types.galaxy_shear_plus_real):
                 corr_type = 'xip'
-                label = r"$\xi_+$"
+                label = r"$\xi_+(\theta)$"
                 color = plt.get_cmap(colormap)(0)
-            
+
             if (spectrum.type1 == spectrum.type2 == Types.galaxy_shear_minus_real):
                 corr_type = 'xim'
-                label = r"$\xi_-$"
+                label = r"$\xi_-(\theta)$"
                 color = plt.get_cmap(colormap)(0.2)
 
             if (spectrum.type1 == Types.galaxy_position_real)&(spectrum.type2 == Types.galaxy_shear_plus_real):
                 corr_type = 'gt'
-                label = r"$\gamma_t$"
+                label = r"$\gamma_t(\theta)$"
                 color = plt.get_cmap(colormap)(0.4)
 
             if (spectrum.type1 == spectrum.type2 == Types.galaxy_position_real):
@@ -827,71 +847,149 @@ class TwoPointFile(object):
                 label = r"$w(\theta)$"
                 color = plt.get_cmap(colormap)(0.6)
 
-            name = "{}_{}.png".format(root,spectrum.name)
-            pairs = spectrum.bin_pairs
-            npairs = len(pairs)
-            bins1 = np.transpose(pairs)[0]
-            bins2 = np.transpose(pairs)[1]
-            nbins1 = np.max(bins1)
-            nbins2 = np.max(bins2)
-            if npairs==0:
-                continue
+            return corr_type, label, color
 
-            if not all(bins1 == bins2):
-                fig, ax = plt.subplots(nbins2, nbins1, figsize=(1.6*nbins1, 1.6*nbins2), sharey=True, sharex=True)
 
-            if all(bins1 == bins2):
-                fig, ax = plt.subplots(1, nbins1, figsize=(1.6*nbins1, 2), sharey=True, sharex=True)
-                ax = np.diag(ax)
+        if plot_spectrum:
 
-            for k,pair in enumerate(pairs):
-                i,j = pair
-                theta, xi = spectrum.get_pair(i,j)
-                error = spectrum.get_error(i,j)
+            for spectrum in self.spectra:
+
+                corr_type, label, color = corr_names(spectrum)
+
+                mtype = 'o'
+                # Use one color for each file in case you want to compare different files
+                if save_pickle:
+                    color = plt.get_cmap(colormap)(0)
+                if save_pickle and load_pickle:
+                    color = plt.get_cmap(colormap)(0.2)
+                if load_pickle:
+                    color = plt.get_cmap(colormap)(0.4)
+
+                name = "{}_{}.png".format(root,spectrum.name)
+                pairs = spectrum.bin_pairs
+                npairs = len(pairs)
+                bins1 = np.transpose(pairs)[0]
+                bins2 = np.transpose(pairs)[1]
+                nbins1 = np.max(bins1)
+                nbins2 = np.max(bins2)
+                if npairs==0:
+                    continue
                 
-                ax[j-1][i-1].errorbar(theta, abs(xi), yerr = error, fmt = 'o', capsize=1.5, markersize=3, color = color, mec = color, elinewidth=1.)
-                ax[j-1][i-1].text(0.85, 0.85, "{},{}".format(i,j), horizontalalignment='center',
-                                  verticalalignment='center', transform=ax[j-1][i-1].transAxes, fontsize=12)
-                ax[j-1][i-1].set_xscale('log', nonposx='clip')
-                ax[j-1][i-1].set_yscale('log', nonposy='clip')
-                ax[j-1][i-1].xaxis.set_major_formatter(ticker.FormatStrFormatter('$%d$'))
-                
-                if (not all(bins1 == bins2))&(j == nbins2):
-                    ax[j-1][i-1].set_xlabel(r"$\theta$ [arcmin]")
+                # Choose different figure sizes depending on the number of redshift bins
+                if not all(bins1 == bins2):
+                    fig, ax = plt.subplots(nbins2, nbins1, figsize=(1.6*nbins1, 1.6*nbins2), sharey=True, sharex=True)
+
                 if all(bins1 == bins2):
-                    ax[j-1][i-1].set_xlabel(r"$\theta$ [arcmin]")
-                if i == 1:
-                    ax[j-1][i-1].set_ylabel(label)
+                    # Autocorrelation only will have a different figure size and structure
+                    fig, ax = plt.subplots(1, nbins1, figsize=(1.6*nbins1, 1.4), sharey=True, sharex=True)
+                    ax = np.diag(ax)
 
-                if (not all(bins1 == bins2))&(corr_type!='gt')&(j>i):                    
-                    fig.delaxes(ax[i-1, j-1])
+                if load_pickle:
+                    # If we are continuing a plot to compare different files, load the fig and axes objects
+                    name_pickle = "{}_{}.pickle".format(root,spectrum.name)
+                    fig = pl.load(open(name_pickle,'rb'))
+                    if remove_pickle: 
+                        os.
+                    ax = fig.axes
+                    ax = np.array(ax)
+                    if len(ax) == nbins1:
+                        ax = np.diag(ax)
+                    else:
+                        ax = np.reshape(ax, (nbins2,nbins1))
 
-            print("Saving {}".format(name))
-            plt.tight_layout()
-            plt.savefig(name, bbox_inches='tight', dpi=400)
-            if savepdf:
-                plt.savefig(name + '.pdf', bbox_inches='tight')
-            plt.close()
+                for k,pair in enumerate(pairs):
 
-        for kernel in self.kernels:
-            name = "{}_{}.png".format(root,kernel.name)
-            plt.figure()
-            fig, ax = plt.subplots(1, 1, figsize=(5,3))
-            for i,nz in enumerate(kernel.nzs):
-                color = color = plt.get_cmap(colormap)(0.2*i)
-                ax.plot(kernel.z, nz, lw = 1.5, color = color)
-                ax.fill_between(kernel.z, 0, nz, color = color, alpha = 0.2)
-            ax.set_xlabel('Redshift')
-            ax.set_ylabel('Normalized counts')
-            ax.set_xlim(0,2)
-            ax.set_ylim(bottom=0)
-            plt.tight_layout()
-            print("Saving {}".format(name))
-            plt.savefig(name, bbox_inches='tight', dpi=400)
-            if savepdf:
-                plt.savefig(name + '.pdf',bbox_inches='tight')
-            plt.close()
+                    i,j = pair
+                    theta, xi = spectrum.get_pair(i,j)
+                    error = spectrum.get_error(i,j)
+                
+                    ax[j-1][i-1].errorbar(theta, abs(xi), yerr = error, fmt = mtype, capsize=1.5, markersize=3, color = color, mec = color, elinewidth=1., label = label_legend)
+             
+                    ax[j-1][i-1].text(0.85, 0.85, "{},{}".format(i,j), horizontalalignment='center',
+                                      verticalalignment='center', transform=ax[j-1][i-1].transAxes, fontsize=12)
+                    ax[j-1][i-1].set_xscale('log', nonposx='clip')
+                    ax[j-1][i-1].set_yscale('log', nonposy='clip')
+                    ax[j-1][i-1].xaxis.set_major_formatter(ticker.FormatStrFormatter('$%d$'))
 
+                    if (not all(bins1 == bins2))&(j == nbins2):
+                        ax[j-1][i-1].set_xlabel(r"$\theta$ [arcmin]")
+                    if all(bins1 == bins2):
+                        ax[j-1][i-1].set_xlabel(r"$\theta$ [arcmin]")
+                    if i == 1:
+                        ax[j-1][i-1].set_ylabel(label)
+
+                    if not save_pickle:
+                        if (not all(bins1 == bins2))&(corr_type!='gt')&(j>i):                    
+                            fig.delaxes(ax[i-1, j-1])
+
+                if not save_pickle:
+                    plt.legend(prop={'size': 5})
+                    savefig(name)
+                if save_pickle:
+                    name_pickle = "{}_{}.pickle".format(root,spectrum.name)
+                    pl.dump(fig,file(name_pickle,'w'))
+
+                plt.close()
+
+        if plot_kernel:
+            for kernel in self.kernels:
+                name = "{}_{}.png".format(root,kernel.name)
+                plt.figure()
+                fig, ax = plt.subplots(1, 1, figsize=(5,3))
+                for i,nz in enumerate(kernel.nzs):
+                    color = color = plt.get_cmap(colormap)(0.2*i)
+                    ax.plot(kernel.z, nz, lw = 1.5, color = color)
+                    ax.fill_between(kernel.z, 0, nz, color = color, alpha = 0.2)
+                ax.set_xlabel('Redshift')
+                ax.set_ylabel('Normalized counts')
+                ax.set_xlim(0,2)
+                ax.set_ylim(bottom=0)
+                plt.tight_layout()
+                savefig(name)
+        
+        if plot_cov:
+            def corrmatrix(cov):
+               cov = np.mat(cov)
+               D = np.diag(np.sqrt(np.diag(cov)))
+               d = np.linalg.inv(D)
+               corr = d*cov*d
+               return corr
+
+            name = "{}_{}.png".format(root,'cov')
+            cov = self.covmat
+            ncov1 = len(cov)
+            ncov2 = len(cov[0])
+
+            corr = corrmatrix(cov)
+            if cov_vmin is None:
+                cov_vmin = np.min(corr)
+
+            figsize1 = 1.22222222227*ncov1/100.
+            figsize2 = ncov2/100.
+            fig, ax = plt.subplots(1,1,figsize=(figsize1,figsize2))
+            im = ax.imshow(corr,interpolation='nearest',
+                           aspect='auto', origin='lower', vmin = cov_vmin, vmax = 1., cmap=colormap+'_r')
+            cbar = fig.colorbar(im)
+
+            # Get labels to put in the title
+            labels = ''
+            for spectrum in self.spectra:
+                corr_type, label, color = corr_names(spectrum)
+                labels = labels + label + ' $|$ '
+            labels = labels[:-4]
+            ax.set_title(labels)
+
+            # Plot lines to divide covariance
+            lengths = self.covmat_info.lengths
+            pos_lines = [0]
+            for i in range(len(lengths)):
+                pos_lines.append(pos_lines[i] + lengths[i])
+            pos_lines = pos_lines[1:-1]          
+            for line in pos_lines:
+                ax.axvline(x=line, c='k', lw = 1, ls = '-')
+                ax.axhline(y=line, c='k', lw = 1, ls = '-')
+
+            savefig(name)
 
 
 class SpectrumCovarianceBuilder(object):
