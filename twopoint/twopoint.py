@@ -10,7 +10,8 @@ import os
 TWOPOINT_SENTINEL = "2PTDATA"
 NZ_SENTINEL = "NZDATA"
 COV_SENTINEL = "COVDATA"
-window_types=["SAMPLE","CLBP"]
+WIN_SENTINEL = "WINDATA"
+window_types=["SAMPLE","NPAIRS","CLBP"]
 METADATA_PREFIX="MD_"
 
 #Please do not add things to this list
@@ -369,10 +370,12 @@ class SpectrumMeasurement(object):
             fits.Column(name='VALUE', array=self.value, format='D'),
         ]
         if self.angle is not None:
-            if self.windows=="SAMPLE":
+            if (self.windows=="SAMPLE") or (self.windows=="NPAIRS"):
                 columns.append(fits.Column(name='ANG', array=self.angle, format='D', unit=self.angle_unit))
             if self.windows=="CLBP":
                 columns.append(fits.Column(name='ANG', array=self.angle, format='2K',unit=self.angle_unit))
+            if self.windows=="NPAIRS":
+                columns.append(fits.Column(name='WIN_NPAIRS', array=self.win, format=str(len(self.win)[0])+'D', unit=self.angle_unit))
         if self.npairs is not None:
             columns.append(fits.Column(name='NPAIRS', array=self.npairs, format='D'))
         if self.varxi is not None:
@@ -380,6 +383,171 @@ class SpectrumMeasurement(object):
         if self.extra_cols is not None:
             for (colname,arr) in self.extra_cols.iteritems():
                 columns.append(fits.Column(name='XTRA_'+colname, array=arr, format='D'))
+
+        extension = fits.BinTableHDU.from_columns(columns, header=header)
+        return extension
+
+
+class WindowObject(object):
+    def __init__(self, name, window_type, bins, types, spectrum, angular_bin, value, 
+                 angle=None, angle_unit=None, metadata=None):
+        """metadata is a dictionary which will get added to the fits header"""
+        self.name = name # must match spectrum name
+        self.bin1, self.bin2 = bins
+        self.bin_pairs = self.get_bin_pairs()  #unique bin pairs
+        self.type1, self.type2 = types
+        self.spectrum = spectrum
+        self.angular_bin = angular_bin
+        self.angle = angle
+        if window_type in window_types:
+            self.value = value
+        else:
+            raise TypeError("window type %s not recognised"%windows)
+        self.metadata = metadata
+        if self.is_real_space():
+            #angle is real
+            msg = "Files with real-space units must specify units as one of: {}".format(list(ANGULAR_UNITS.keys()))
+            assert angle_unit in ANGULAR_UNITS,  msg
+        self.angle_unit = angle_unit
+
+    def __str__(self):
+        return "<Window: {}>".format(self.name)
+    def __repr__(self):
+        return "<Window: {}>".format(self.name)
+
+    def get_bin_pairs(self):
+        all_pairs = zip(self.bin1,self.bin2)
+        unique_pairs=[]
+        for p in all_pairs:
+            if p not in unique_pairs:
+                unique_pairs.append(p)
+        return unique_pairs
+
+    def canonical_order(self):
+        # order by b1, then b2, then angle
+        order = np.lexsort([self.bin1, self.bin2, self.angular_bin])
+        return order
+
+    def is_real_space(self):
+        return self.type1.value.endswith("R") or self.type2.value.endswith("R")
+
+    def convert_angular_units(self, unit):
+        if not self.is_real_space():
+            raise ValueError("Two point spectrum has no units to convert; it is in Fourier space")
+
+        if self.windows not in ["SAMPLE", "CLBP"]:
+            raise NotImplementedError("Need to write code to transform window function units")
+        old_unit = ANGULAR_UNITS[self.angle_unit]
+        new_unit = ANGULAR_UNITS[unit]
+
+        print("Converting angle units of {} from {} -> {} (factor {})".format(
+            self.name,old_unit, new_unit, old_unit.to(new_unit)))
+        angle_with_units = self.angle*old_unit
+        self.angle = angle_with_units.to(new_unit).value
+        self.angle_unit = unit
+
+    def apply_mask(self, mask):
+        """mask is a boolean array which True for elements to be kept"""
+        self.bin1 = self.bin1[mask]
+        self.bin2 = self.bin2[mask]
+        self.angular_bin = self.angular_bin[mask]
+        self.angle = self.angle[mask]
+        self.value = self.value[mask]
+
+    def auto_bins(self):
+        return self.bin1==self.bin2
+
+    def __len__(self):
+        return len(self.value)
+
+    def nbin(self):
+        return np.max([self.bin1.max(), self.bin2.max()])
+
+    def get_window(self, bin1, bin2, angular_bin):
+        w = (self.bin1==bin1) & (self.bin2==bin2) & (self.angular_bin==angular_bin)
+        return self.angle[w], self.value[w]
+
+    def get_window_mask(self, bin1, bin2, angular_bin):
+        w = (self.bin1==bin1) & (self.bin2==bin2) & (self.angular_bin==angular_bin)
+        return w
+
+    @classmethod
+    def from_fits(cls, extension, covmat_info=None):
+        name=extension.name
+        #determine the type of the quantity involved
+        type1 = Types.lookup(extension.header['QUANT1'])
+        type2 = Types.lookup(extension.header['QUANT2'])
+
+        #and the name of the kernels and the window function
+        #extensions
+        spectrum = extension.header['SPECTRUM']
+        window_type = extension.header['WINDOW_TYPE']
+
+        if window_type not in window_types:
+            raise TypeError("window type %s not recognised"%window_type)
+
+        #Now load the data
+        data = extension.data
+        bin1 = data['BIN1']
+        bin2 = data['BIN2']
+        angular_bin = data['ANGBIN']
+        value = data['VALUE']
+        if "ANG" in data.names:
+            angle = data['ANG']
+            ang_index = data.names.index("ANG")
+            angle_unit= extension.header.get('TUNIT{}'.format(ang_index+1))
+            if angle_unit is not None:
+                angle_unit = angle_unit.strip()
+        else:
+            angle = None
+            angle_unit = None
+
+        #check for metadata
+        metadata={}
+        for key in extension.header:
+            if key.startswith(METADATA_PREFIX):
+                metadata[key.replace(METADATA_PREFIX,"")] = extension.header[key]
+
+        #Load a chunk of the covariance matrix too if present.
+        if covmat_info is None:
+            error = None
+        else:
+            error = covmat_info.get_error(name)
+
+        return SpectrumMeasurement(name, (bin1, bin2), (type1, type2), (kernel1, kernel2), windows,
+                                   angular_bin, value, angle, error, angle_unit=angle_unit, npairs=npairs, 
+                                   varxi=varxi, extra_cols=extra_cols, metadata=metadata)
+
+    def to_fits(self):
+        header = fits.Header()
+        header[WIN_SENTINEL]= True
+        header['EXTNAME']=self.name
+        header['QUANT1'] = self.type1.value
+        header['QUANT2'] = self.type2.value
+        header['SPECTRUM'] = self.spectrum
+        header['WINDOW_TYPE'] = self.window_type #NOT YET CODED ANYTHING ELSE
+        header['N_ZBIN_1'] = len(np.unique(self.bin1))
+        header['N_ZBIN_2'] = len(np.unique(self.bin2))
+        if self.metadata is not None:
+            #Check metadata doesn't share any keys with the stuff that's already in the header
+            assert set(self.metadata.keys()).isdisjoint(set(header.keys()))
+            for key,val in self.metadata.iteritems():
+                header[METADATA_PREFIX+key]=val #Use MD_ prefix so metadata entries can be easily recognised by from_fits
+        header['N_ANG']=len(np.unique(self.angle[0]))
+
+        columns = [
+            fits.Column(name='BIN1', array=self.bin1, format='K'),
+            fits.Column(name='BIN2', array=self.bin2, format='K'),
+            fits.Column(name='ANGBIN', array=self.angular_bin, format='K'),
+        ]
+        if self.angle is not None:
+            if self.windows=="SAMPLE":
+                columns.append(fits.Column(name='ANG', array=self.angle, format='D', unit=self.angle_unit))
+            if self.windows=="CLBP":
+                columns.append(fits.Column(name='ANG', array=self.angle, format='2K',unit=self.angle_unit))
+            if self.windows=="NPAIRS":
+                columns.append(fits.Column(name='ANG', array=self.angle, format=str(len(self.value[0]))+'D', unit=self.angle_unit))
+                columns.append(fits.Column(name='VALUE', array=self.value, format=str(len(self.value[0]))+'D'))
 
         extension = fits.BinTableHDU.from_columns(columns, header=header)
         return extension
@@ -532,6 +700,16 @@ class TwoPointFile(object):
         else:
             return kernels[0]
 
+    def get_window(self, name):
+        windows = [window for window in self.windows if window.name==name]
+        n = len(windows)
+        if n==0:
+            raise ValueError("Windows with name %s not found in file"%name)
+        elif n>1:
+            raise ValueError("Multiple windows with name %s found in file"%name)
+        else:
+            return windows[0]
+
     def _build_spectrum_index(self):
         index = 0
         self._spectrum_index = {}
@@ -556,7 +734,14 @@ class TwoPointFile(object):
             mask = np.concatenate(masks)
             self.covmat = self.covmat[mask, :][:, mask]
             self.covmat_info = CovarianceMatrixInfo(self.covmat_info.name, [s.name for s in self.spectra], [len(s) for s in self.spectra], self.covmat)
-        
+
+    def _mask_windows(self, masks):
+        #Assumes windows list is one-to-one with spectrum list
+        if self.windows is not None:
+            if len(mask)!=len(self.windows):
+                raise('Number of masks does not match number of windows.')
+            for i,window in enumerate(self.windows):
+                self.windows[i].apply_mask(mask[i])
 
     def mask_bad(self, bad_value):
         "Go through all the spectra masking out data where they are equal to bad_value"
@@ -571,6 +756,7 @@ class TwoPointFile(object):
             masks.append(mask)
         if masks:
             self._mask_covmat(masks)
+            self._mask_windows(masks)
 
     def reorder_canonical(self):
         masks = []
@@ -583,9 +769,7 @@ class TwoPointFile(object):
             n += len(mask)
         if masks:
             self._mask_covmat(masks)
-
-    
-
+            self._mask_windows(masks)
 
     def mask_indices(self, spectrum_name, indices):
         s = self.get_spectrum(spectrum_name)
@@ -603,9 +787,6 @@ class TwoPointFile(object):
             print(mask)
         self._mask_covmat(masks)
 
-
-
-
     def mask_cross(self):
         masks = []
         for spectrum in self.spectra:
@@ -615,6 +796,7 @@ class TwoPointFile(object):
             masks.append(mask)
         if masks:
             self._mask_covmat(masks)
+            self._mask_windows(masks)
 
     def mask_scales(self, cuts={}, bin_cuts=[]):
         masks=[]
@@ -647,7 +829,8 @@ class TwoPointFile(object):
 
         if masks:
             self._mask_covmat(masks)
-            
+            self._mask_windows(masks)
+
             
     def mask_scale(self, spectra_to_cut, min_scale=-np.inf, max_scale=np.inf):
         masks = []
@@ -686,6 +869,10 @@ class TwoPointFile(object):
         if self.covmat is not None:
             mask = np.concatenate(mask)
             self.covmat = self.covmat[mask,:][:,mask]
+        if self.windows is not None:
+            if len(mask)!=len(self.windows):
+                raise('Number of spectra not consistent with number of windows.')
+            self.windows = [w for (u,w) in zip(use,self.windows) if u]
 
     def get_cov_start(self):
 
@@ -737,6 +924,10 @@ class TwoPointFile(object):
             for kernel in self.kernels:
                 hdus.append(kernel.to_fits())
 
+        if self.windows is not None:
+            for window in self.windows:
+                hdus.append(window.to_fits())
+
         hdulist = fits.HDUList(hdus)
         hdulist.writeto(filename, clobber=clobber)
 
@@ -759,7 +950,6 @@ class TwoPointFile(object):
             extension = fitsfile[covmat_name]
             covmat_info = CovarianceMatrixInfo.from_fits(extension)
 
-
         #First load all the spectra in the file
         #Spectra are indicated by the "2PTDATA" keyword
         #in the header being "T"
@@ -778,19 +968,13 @@ class TwoPointFile(object):
         #that we just use a single sample value of ell or theta instead.
         #If the spectra required it (according to the header) then we also
         #need to load those in.
-        for spectrum in spectra:
-            if spectrum.windows not in window_types and spectrum.windows not in windows:
-                windows[spectrum.windows] = cls._windows_from_fits(fitsfile[windows])
+        for extension in fitsfile:
+            if extension.header.get(WIN_SENTINEL):
+                windows.append(WindowObject.from_fits(extension))
 
         #return a new TwoPointFile object with the data we have just loaded
         return cls(spectra, kernels, windows, covmat_info)
 
-
-                
-    
-    @classmethod
-    def _windows_from_fits(cls, extension):
-        raise NotImplementedError("non-sample window functions in ell/theta")
 
     def plots(self, root, colormap='viridis', savepdf=False, latex=True, plot_spectrum=True, plot_kernel=True, plot_cov=True, cov_vmin=None, save_pickle = False, load_pickle = False, remove_pickle = True,label_legend = '', callback=None):
         """
@@ -903,8 +1087,11 @@ class TwoPointFile(object):
                     theta, xi = spectrum.get_pair(i,j)
                     error = spectrum.get_error(i,j)
                 
-                    ax[j-1][i-1].errorbar(theta, abs(xi), yerr = error, fmt = mtype, capsize=1.5, markersize=3, color = color, mec = color, elinewidth=1., label = label_legend)
-             
+                    if np.sum(xi>0):
+                        ax[j-1][i-1].errorbar(theta[xi>0], (xi*theta)[xi>0], yerr = error[xi>0], fmt = mtype, capsize=1.5, markersize=3, color = color, mec = color, elinewidth=1., label = label_legend)
+                    if np.sum(xi<0):
+                        ax[j-1][i-1].errorbar(theta[xi<0], -(xi*theta)[xi<0], yerr = error[xi<0], fmt = 'x', capsize=1.5, markersize=3, color = color, mec = color, elinewidth=1., label = label_legend)
+
                     ax[j-1][i-1].text(0.85, 0.85, "{},{}".format(i,j), horizontalalignment='center',
                                       verticalalignment='center', transform=ax[j-1][i-1].transAxes, fontsize=12)
                     ax[j-1][i-1].set_xscale('log', nonposx='clip')
