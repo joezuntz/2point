@@ -792,7 +792,7 @@ class TwoPointFile(object):
     def _windows_from_fits(cls, extension):
         raise NotImplementedError("non-sample window functions in ell/theta")
 
-    def plots(self, root, colormap='viridis', savepdf=False, latex=True, plot_spectrum=True, plot_kernel=True, plot_cov=True, cov_vmin=None, save_pickle = False, load_pickle = False, remove_pickle = True,label_legend = '', callback=None):
+    def plots(self, root, colormap='viridis', savepdf=False, latex=True, plot_spectrum=True, plot_kernel=True, plot_cov=True, cov_vmin=None, save_pickle = False, load_pickle = False, remove_pickle = True,label_legend = '', blind_yaxis=False, callback=None):
         """
         Makes plot of each for your spectra, kernels and covariance. Allows you to compare the spectra of different files. 
         Options:
@@ -807,6 +807,7 @@ class TwoPointFile(object):
         - load_pickle: if true, it will continue the plot starting from a pickle file.
         - remove_pickle: set to true if you want to keep this file to edit your plot afterwards.
         - label_legend: name that will appear in the legend when comparing different files.
+        - blind_axis: True if you want to remove the y-axis labels. 
         """
 
         import matplotlib.pyplot as plt
@@ -910,6 +911,8 @@ class TwoPointFile(object):
                     ax[j-1][i-1].set_xscale('log', nonposx='clip')
                     ax[j-1][i-1].set_yscale('log', nonposy='clip')
                     ax[j-1][i-1].xaxis.set_major_formatter(ticker.FormatStrFormatter('$%d$'))
+                    if blind_yaxis:
+                        ax[j-1][i-1].yaxis.set_ticklabels([])
 
                     if (not all(bins1 == bins2))&(j == nbins2):
                         ax[j-1][i-1].set_xlabel(r"$\theta$ [arcmin]")
@@ -930,6 +933,7 @@ class TwoPointFile(object):
                     pl.dump(fig,file(name_pickle,'w'))
 
                 plt.close()
+            plt.close('all')
 
         if plot_kernel:
             for kernel in self.kernels:
@@ -946,7 +950,7 @@ class TwoPointFile(object):
                 ax.set_ylim(bottom=0)
                 plt.tight_layout()
                 savefig(name)
-        
+
         if plot_cov:
             def corrmatrix(cov):
                cov = np.mat(cov)
@@ -990,7 +994,6 @@ class TwoPointFile(object):
                 ax.axhline(y=line, c='k', lw = 1, ls = '-')
 
             savefig(name)
-
 
 class SpectrumCovarianceBuilder(object):
     """
