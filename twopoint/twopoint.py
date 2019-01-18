@@ -5,12 +5,15 @@ from .enum34 import Enum
 import numpy as np
 import copy
 import os
+import warnings
 
 #FITS header keyword indicating 2-point data
 TWOPOINT_SENTINEL = "2PTDATA"
 NZ_SENTINEL = "NZDATA"
 COV_SENTINEL = "COVDATA"
-window_types=["SAMPLE","CLBP"]
+window_types = ["SAMPLE", "CLBP", "LOG_MID"]
+#LOG_MID interpolates at log mid of bin
+
 METADATA_PREFIX="MD_"
 
 #Please do not add things to this list
@@ -62,6 +65,7 @@ class Types(Enum):
     galaxy_position_real = "GPR"
     galaxy_shear_plus_real = "G+R"
     galaxy_shear_minus_real = "G-R"
+    cmb_kappa_real = "CKR"
 
     @classmethod
     def lookup(cls, value):
@@ -166,12 +170,37 @@ class NumberDensity(object):
         extension = fits.BinTableHDU.from_columns(columns, header=header)
         return extension        
         
+    @classmethod
+    def from_block(cls, block, section_name, output_name=None):
+        """Load kernel from cosmosis datablock"""
+        if output_name==None:
+            output_name = section_name
+        if block.has_value(section_name, "z_mid" ):
+            z_mid = block[section_name, "z_mid"]
+            z_low = block[section_name, "z_low"]
+            z_high = block[section_name, "z_high"]
+        else:
+            z_mid = block[section_name, "z"]
+            dz = z_mid[2]-z_mid[1]
+            z_low = z_mid - 0.5 * dz
+            z_high = z_mid + 0.5 * dz
+
+        nzs = []
+        for i in range(1,99999):
+            bin_name = "bin_%d"%i
+            if block.has_value(section_name, bin_name ):
+                nzs.append(block[section_name, bin_name] )
+            else:
+                break
+
+        N = cls(output_name, z_low, z_mid, z_high, nzs )
+        return N
 
 
 class SpectrumMeasurement(object):
     def __init__(self, name, bins, types, kernels, windows, angular_bin, value, 
                  angle=None, error=None, angle_unit=None, metadata=None, npairs=None, 
-                 varxi=None, extra_cols=None):
+                 varxi=None, extra_cols=None, angle_min=None, angle_max=None):
         """metadata is a dictionary which will get added to the fits header"""
         """extra cols is a dictionary of tuples (n"""
         self.name = name
@@ -181,6 +210,8 @@ class SpectrumMeasurement(object):
         self.kernel1, self.kernel2 = kernels
         self.angular_bin = angular_bin
         self.angle = angle
+        self.angle_min = angle_min
+        self.angle_max = angle_max        
         self.value = value
         self.npairs = npairs
         self.varxi = varxi
@@ -240,6 +271,9 @@ class SpectrumMeasurement(object):
         angle_with_units = self.angle*old_unit
         self.angle = angle_with_units.to(new_unit).value
         self.angle_unit = unit
+        if self.angle_min is not None:
+            self.angle_min = (self.angle_min * old_unit).to(new_unit).value
+            self.angle_max = (self.angle_max * old_unit).to(new_unit).value
 
 
     def apply_mask(self, mask):
@@ -251,6 +285,21 @@ class SpectrumMeasurement(object):
         self.value = self.value[mask]
         if self.error is not None:
             self.error = self.error[mask]
+        if self.angle_min is not None:
+            self.angle_min = self.angle_min[mask]
+            self.angle_max = self.angle_max[mask]
+
+
+    def cut_bin_pair(self, bin_pair, complain=False):
+        """Cut a full bin pair. If complain is True,
+        raise a ValueError if the bin pair is not found"""
+        b1, b2 = bin_pair
+        mask = (self.bin1==b1)*(self.bin2==b2)
+        if (mask.sum()==0) and complain:
+            raise ValueError("""You tried to cut bin pair %d,%d from spectrum named %s 
+                             but it doesn't exist"""%(b1,b2,self.name))
+        elif mask.sum()>0:
+            self.apply_mask(~mask)
 
     def auto_bins(self):
         return self.bin1==self.bin2
@@ -722,8 +771,13 @@ class TwoPointFile(object):
             start_i+=cov_lengths[ind_i]
         return cov_out
 
-    def to_fits(self, filename, clobber=False):
+    def to_fits(self, filename, overwrite=False, clobber=False):
         hdus = [fits.PrimaryHDU()]
+
+        if clobber:
+            warnings.warn("The 'clobber' keyword in twopoint is deprecated."
+                "Please switch to overwrite.", DeprecationWarning)
+
 
         if self.covmat_info is not None:
             hdus.append(self.covmat_info.to_fits())
@@ -738,7 +792,7 @@ class TwoPointFile(object):
                 hdus.append(kernel.to_fits())
 
         hdulist = fits.HDUList(hdus)
-        hdulist.writeto(filename, clobber=clobber)
+        hdulist.writeto(filename, overwrite=(clobber or overwrite))
 
 
     @classmethod
