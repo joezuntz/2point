@@ -872,7 +872,8 @@ class TwoPointFile(object):
     def _windows_from_fits(cls, extension):
         raise NotImplementedError("non-sample window functions in ell/theta")
 
-    def plots(self, root, colormap='viridis', savepdf=False, latex=True, plot_spectrum=True, plot_kernel=True, plot_cov=True, cov_vmin=None, save_pickle=False, load_pickle=False, remove_pickle=True, label_legend='', blind_yaxis=False, callback=None):
+
+    def plots(self, root, colormap='viridis', savepdf=False, latex=True, plot_spectrum=True, plot_kernel=True, plot_cov=True, cov_vmin=None, sharey=True, save_pickle=False, load_pickle=False, remove_pickle=True,label_legend ='', blind_yaxis=False, callback=None):
         """
         Makes plot of each for your spectra, kernels and covariance. Allows you to compare the spectra of different files. 
         Options:
@@ -882,6 +883,7 @@ class TwoPointFile(object):
         - latex: True if want to save with latex font. It will be slower. Set to false to test plot.
         - plot_spectrum, plot_kernel, plot_cov: whether or not to make this plots
         - cov_vmin = minimum value for the colorbar in the covariance plot.
+        - sharey: matplotlib parameter to enforce all subplots share the same y axis if it is True.
         - plot_spectrum, plot_kernel and plot_cov are boolean variables that are true if you want to make these plots.
         - save_pickle: if true it saves a pickle file to edit be able to compare different files.
         - load_pickle: if true, it will continue the plot starting from a pickle file.
@@ -965,13 +967,11 @@ class TwoPointFile(object):
 
                 # Choose different figure sizes depending on the number of redshift bins
                 if not all(bins1 == bins2):
-                    fig, ax = plt.subplots(nbins2, nbins1, figsize=(
-                        1.6*nbins1, 1.6*nbins2), sharey=True, sharex=True)
+                    fig, ax = plt.subplots(nbins2, nbins1, figsize=(1.6*nbins1, 1.6*nbins2), sharey=sharey, sharex=True)
 
                 if all(bins1 == bins2):
                     # Autocorrelation only will have a different figure size and structure
-                    fig, ax = plt.subplots(1, nbins1, figsize=(
-                        1.6*nbins1, 1.4), sharey=True, sharex=True)
+                    fig, ax = plt.subplots(1, nbins1, figsize=(1.6*nbins1, 1.4), sharey=sharey, sharex=True)
                     ax = np.diag(ax)
 
                 if load_pickle:
@@ -987,15 +987,22 @@ class TwoPointFile(object):
                     else:
                         ax = np.reshape(ax, (nbins2, nbins1))
 
-                for k, pair in enumerate(pairs):
+                    # Fix bug in matplotlib that does not maintain sharey axes after pickleling
+                    if sharey:
+                        ax_master = fig.axes[0]
+                        for axs in fig.axes:
+                            if axs is not ax_master:
+                                ax_master.get_shared_y_axes().join(ax_master, axs)
 
-                    i, j = pair
-                    theta, xi = spectrum.get_pair(i, j)
-                    error = spectrum.get_error(i, j)
 
-                    ax[j-1][i-1].errorbar(theta, abs(xi), yerr=error, fmt=mtype, capsize=1.5,
-                                          markersize=3, color=color, mec=color, elinewidth=1., label=label_legend)
 
+                for k,pair in enumerate(pairs):
+
+                    i,j = pair
+                    theta, xi = spectrum.get_pair(i,j)
+                    error = spectrum.get_error(i,j)
+                
+                    ax[j-1][i-1].errorbar(theta, abs(xi), yerr = error, fmt = mtype, capsize=1.4, markersize=1.5, color = color, mec = color, elinewidth=0.5, markeredgewidth=0.5, label = label_legend)
                     ax[j-1][i-1].text(0.85, 0.85, "{},{}".format(i, j), horizontalalignment='center',
                                       verticalalignment='center', transform=ax[j-1][i-1].transAxes, fontsize=12)
                     ax[j-1][i-1].set_xscale('log', nonposx='clip')
