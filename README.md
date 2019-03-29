@@ -153,7 +153,7 @@ T1.plots(filename1)
 ```
 The plots will be saved with the root name filename1. Options for a single file: 
 ```                                                                           
-T1.plots(filename1, colormap = 'viridis', savepdf = False, latex = True, plot_spectrum = True, plot_kernel = True, plot_cov = True, save_pickle = False, blind_yaxis=False)
+T1.plots(filename1, colormap='viridis', savepdf=False, latex=True, plot_spectrum=True, plot_kernel=True, plot_cov=True, cov_vmin=None, sharey=True, save_pickle=False, load_pickle=False, remove_pickle=True,label_legend ='', blind_yaxis=False)
 ```
 These are the default options. You can change the colormap, choose to also save pdf's besides png's, turn off the latex font and choose to not plot the spectrum, the kernel or the covariance. If save_pickle is true, it will save a pickle file so that you can tweak your plot afterwards loading this file. The y-axis can also be blinded by setting blind_yaxis to True. Here are some example plots that this function produces: 
 
