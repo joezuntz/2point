@@ -11,7 +11,6 @@ import copy
 import os
 import warnings
 
-
 # FITS header keyword indicating 2-point data
 TWOPOINT_SENTINEL = "2PTDATA"
 NZ_SENTINEL = "NZDATA"
@@ -29,7 +28,6 @@ ANGULAR_UNIT_TYPES = [
     astropy.units.deg,
 ]
 ANGULAR_UNITS = {unit.name: unit for unit in ANGULAR_UNIT_TYPES}
-
 
 def sample_cov(xi_arrays, mode='full'):
     """mode should be full, subsample or jk"""
@@ -1088,6 +1086,85 @@ class TwoPointFile(object):
                 ax.axhline(y=line, c='k', lw=1, ls='-')
 
             savefig(name)
+
+    def import_cov(self, cov_file, gammat_cut=None, no_cross_clustering=True,gammat_name='gammat',wtheta_name='wtheta',resort_data=True,gaussian_only=True):
+        """
+        This assums files are txt files containing a long-form cosmolike covariance output and gg lensing cut file. It will re-sort the data vectors to be in the order assumed by the covariance.
+        """
+
+        def get_removed_bins_and_length(gammat_cut,no_cross_clustering,gammat_name,wtheta_name):
+
+            # Apply gammat masking from covariance
+            if gammat_cut is not None:
+                bin1,bin2,accept,_=np.loadtxt(gammat_cut).T
+                bin1=bin1.astype(int) + 1
+                bin2=bin2.astype(int) + 1
+                accept=accept.astype(int)
+
+                gammat = self.get_spectrum(gammat_name)
+
+                accept_dict = {}
+                for (b1,b2,a) in zip(bin1,bin2,accept):
+                    accept_dict[(b1,b2)] = a
+
+                mask = [accept_dict[(b1,b2)] for (b1,b2) in zip(gammat.bin1,gammat.bin2)]
+                mask = np.array(mask, dtype=bool)
+
+                gammat.apply_mask(mask)
+
+            # Remove cross-clustering bins if applicable
+            if no_cross_clustering:
+                wtheta = self.get_spectrum(wtheta_name)
+                mask = wtheta.bin1==wtheta.bin2
+                wtheta.apply_mask(mask)
+
+            total_length = 0
+            for spec in self.spectra:
+                total_length += len(spec)
+
+            return total_length
+
+        # Read the covariance - concatenated output files from cosmolike
+        covdata = np.loadtxt(cov_file)
+
+        total_length = get_removed_bins_and_length(gammat_cut,no_cross_clustering,gammat_name,wtheta_name)
+
+        # Replace theta values with bin numbers.
+        theta = np.sort(np.unique(covdata[:,2]))
+        for i in range(len(theta)):
+            covdata[np.where(covdata[:,2]==theta[i])[0],2] = i
+            covdata[np.where(covdata[:,3]==theta[i])[0],3] = i
+
+        # Check square matrix size
+        ndata  = int(np.max(covdata[:,0])) + 1
+        ndata2 = int(np.max(covdata[:,1])) + 1
+        assert ndata==ndata2
+        assert ndata==total_length
+
+        # Import cov info into matrix
+        if gaussian_only:
+            cov=np.zeros((ndata,ndata))
+            for i in range(0,covdata.shape[0]):
+                cov[int(covdata[i,0]),int(covdata[i,1])] = covdata[i,8]
+                cov[int(covdata[i,1]),int(covdata[i,0])] = covdata[i,8]
+
+        else:
+            cov=np.zeros((ndata,ndata))
+            for i in range(0,covdata.shape[0]):
+                cov[int(covdata[i,0]),int(covdata[i,1])] = covdata[i,8] + covdata[i,9]
+                cov[int(covdata[i,1]),int(covdata[i,0])] = covdata[i,8] + covdata[i,9]
+
+        if resort_data:
+            for spec in self.spectra:
+                twopt_order = np.vstack((spec.angular_bin,spec.bin1,spec.bin2)).T
+                tmp = twopt_order.copy()
+                mask = tmp.view('i8,i8,i8').argsort(order=['f1','f2','f0'], axis=0).flatten()
+                spec.apply_mask(mask)
+
+        self.covmat_info=CovarianceMatrixInfo('COVMAT',
+            [self.spectra[i].name for i in range(len(self.spectra))],
+            [len(self.spectra[i]) for i in range(len(self.spectra))],
+            cov)
 
 
 class SpectrumCovarianceBuilder(object):
