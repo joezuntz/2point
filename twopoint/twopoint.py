@@ -873,7 +873,7 @@ class TwoPointFile(object):
         raise NotImplementedError("non-sample window functions in ell/theta")
 
 
-    def plots(self, root, colormap='viridis', savepdf=False, latex=True, plot_spectrum=True, plot_kernel=True, plot_cov=True, cov_vmin=None, sharey=True, save_pickle=False, load_pickle=False, remove_pickle=True,label_legend ='', blind_yaxis=False, callback=None):
+    def plots(self, root, colormap='viridis', savepdf=False, latex=True, plot_spectrum=True, plot_kernel=True, plot_cov=True, cov_vmin=None, sharey=True, save_pickle=False, load_pickle=False, remove_pickle=True,label_legend ='', blind_yaxis=False, shade_until=None, callback=None):
         """
         Makes plot of each for your spectra, kernels and covariance. Allows you to compare the spectra of different files. 
         Options:
@@ -890,6 +890,7 @@ class TwoPointFile(object):
         - remove_pickle: set to true if you want to keep this file to edit your plot afterwards.
         - label_legend: name that will appear in the legend when comparing different files.
         - blind_axis: True if you want to remove the y-axis labels. 
+        - shade_until: List of maximum scale to be shaded with length of lens bins for cross-correlations, or lens/source bins for auto-correlations.
         """
 
         import matplotlib.pyplot as plt
@@ -902,7 +903,7 @@ class TwoPointFile(object):
 
         def savefig(name):
             print("Saving {}".format(name))
-            plt.savefig(name, bbox_inches='tight', dpi=400)
+            plt.savefig(name + '.png', bbox_inches='tight', dpi=400)
             if savepdf:
                 plt.savefig(name + '.pdf', bbox_inches='tight')
 
@@ -955,7 +956,7 @@ class TwoPointFile(object):
                 if load_pickle:
                     color = plt.get_cmap(colormap)(0.4)
 
-                name = "{}_{}.png".format(root, spectrum.name)
+                name = "{}_{}".format(root, spectrum.name)
                 pairs = spectrum.bin_pairs
                 npairs = len(pairs)
                 bins1 = np.transpose(pairs)[0]
@@ -1005,6 +1006,10 @@ class TwoPointFile(object):
                     ax[j-1][i-1].errorbar(theta, abs(xi), yerr = error, fmt = mtype, capsize=1.4, markersize=1.5, color = color, mec = color, elinewidth=0.5, markeredgewidth=0.5, label = label_legend)
                     ax[j-1][i-1].text(0.85, 0.85, "{},{}".format(i, j), horizontalalignment='center',
                                       verticalalignment='center', transform=ax[j-1][i-1].transAxes, fontsize=12)
+                    if shade_until is not None:
+                        if not load_pickle:
+                            ax[j-1][i-1].axvspan(min(theta)*0.8, shade_until[i-1], color='gray', alpha=0.2)
+                            ax[j-1][i-1].set_xlim(left=min(theta)*0.8, right=max(theta)*1.2)
                     ax[j-1][i-1].set_xscale('log', nonposx='clip')
                     ax[j-1][i-1].set_yscale('log', nonposy='clip')
                     ax[j-1][i-1].xaxis.set_major_formatter(
@@ -1035,7 +1040,7 @@ class TwoPointFile(object):
 
         if plot_kernel:
             for kernel in self.kernels:
-                name = "{}_{}.png".format(root, kernel.name)
+                name = "{}_{}".format(root, kernel.name)
                 plt.figure()
                 fig, ax = plt.subplots(1, 1, figsize=(5, 3))
                 for i, nz in enumerate(kernel.nzs):
@@ -1057,7 +1062,7 @@ class TwoPointFile(object):
                 corr = d*cov*d
                 return corr
 
-            name = "{}_{}.png".format(root, 'cov')
+            name = "{}_{}".format(root, 'cov')
             cov = self.covmat
             ncov1 = len(cov)
             ncov2 = len(cov[0])
