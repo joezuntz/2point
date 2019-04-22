@@ -1128,7 +1128,15 @@ class TwoPointFile(object):
             total_length = 0
             for spec in spectra_names:
                 total_length += len(self.get_spectrum(spec))
+                
+      	    remove = []
+	        for i in range(len(self.spectra)):
+		        if self.spectra[i].name	not in spectra_names:
+                    remove.append(i)
 
+	        for i in remove:
+                del self.spectra[i]
+                
             return total_length
 
         # Read the covariance - concatenated output files from cosmolike
