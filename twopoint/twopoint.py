@@ -1094,12 +1094,12 @@ class TwoPointFile(object):
 
             savefig(name)
 
-    def import_cov(self, cov_file, gammat_cut=None, no_cross_clustering=True,gammat_name='gammat',wtheta_name='wtheta',resort_data=True,gaussian_only=True):
+    def import_cov(self, cov_file, gammat_cut=None, no_cross_clustering=True,spectra_names=['xip','xim','gammat','wtheta'],resort_data=True,gaussian_only=True):
         """
         This assums files are txt files containing a long-form cosmolike covariance output and gg lensing cut file. It will re-sort the data vectors to be in the order assumed by the covariance.
         """
 
-        def get_removed_bins_and_length(gammat_cut,no_cross_clustering,gammat_name,wtheta_name):
+        def get_removed_bins_and_length(gammat_cut,no_cross_clustering,spectra_names):
 
             # Apply gammat masking from covariance
             if gammat_cut is not None:
@@ -1108,7 +1108,7 @@ class TwoPointFile(object):
                 bin2=bin2.astype(int) + 1
                 accept=accept.astype(int)
 
-                gammat = self.get_spectrum(gammat_name)
+                gammat = self.get_spectrum(spectra_names[2])
 
                 accept_dict = {}
                 for (b1,b2,a) in zip(bin1,bin2,accept):
@@ -1121,20 +1121,20 @@ class TwoPointFile(object):
 
             # Remove cross-clustering bins if applicable
             if no_cross_clustering:
-                wtheta = self.get_spectrum(wtheta_name)
+                wtheta = self.get_spectrum(spectra_names[3])
                 mask = wtheta.bin1==wtheta.bin2
                 wtheta.apply_mask(mask)
 
             total_length = 0
-            for spec in self.spectra:
-                total_length += len(spec)
+            for spec in spectra_names:
+                total_length += len(self.get_spectrum(spec))
 
             return total_length
 
         # Read the covariance - concatenated output files from cosmolike
         covdata = np.loadtxt(cov_file)
 
-        total_length = get_removed_bins_and_length(gammat_cut,no_cross_clustering,gammat_name,wtheta_name)
+        total_length = get_removed_bins_and_length(gammat_cut,no_cross_clustering,spectra_names)
 
         # Replace theta values with bin numbers.
         theta = np.sort(np.unique(covdata[:,2]))
@@ -1169,8 +1169,8 @@ class TwoPointFile(object):
                 spec.apply_mask(mask)
 
         self.covmat_info=CovarianceMatrixInfo('COVMAT',
-            [self.spectra[i].name for i in range(len(self.spectra))],
-            [len(self.spectra[i]) for i in range(len(self.spectra))],
+            spectra_names,
+            [len(self.get_spectrum(spec)) for spec in spectra_names],
             cov)
 
 
