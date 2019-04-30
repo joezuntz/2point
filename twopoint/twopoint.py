@@ -1123,8 +1123,15 @@ class TwoPointFile(object):
             if no_cross_clustering:
                 wtheta = self.get_spectrum(spectra_names[3])
                 mask = wtheta.bin1==wtheta.bin2
-                wtheta.apply_mask(mask)
+                for x in wtheta.__dict__.keys():
+                    if x=='value':
+                        continue
+                    if hasattr(getattr(wtheta,x),'__len__'):
+                        if len(getattr(wtheta,x))==len(wtheta.value):
+                            setattr(wtheta,x,getattr(wtheta,x)[mask])
+                wtheta.value=wtheta.value[mask]
 
+                
             total_length = 0
             for spec in spectra_names:
                 total_length += len(self.get_spectrum(spec))
