@@ -95,7 +95,7 @@ NZDATA Extension
 An NZDATA Binary Table extension is intended to contain the number density distributions as a 
 function of redshift for a quantity.
 
-Not that we use the term "bin" to mean two things here - tomographic bins, meaning selections
+Note that we use the term "bin" to mean two things here - tomographic bins, meaning selections
 of galaxies hopefully in a particular redshift range, and histogram bins, the small division
 in redshift that we get n(z) measured in.
 
