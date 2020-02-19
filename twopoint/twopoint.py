@@ -419,7 +419,7 @@ class SpectrumMeasurement(object):
         header['WINDOWS'] = self.windows  # NOT YET CODED ANYTHING ELSE
         header['N_ZBIN_1'] = len(np.unique(self.bin1))
         header['N_ZBIN_2'] = len(np.unique(self.bin2))
-        if self.metadata is not None:
+        if (self.metadata is not None) and self.metadata:
             # Check metadata doesn't share any keys with the stuff that's already in the header
             assert set(self.metadata.keys()).isdisjoint(set(header.keys()))
             for key, val in self.metadata.iteritems():
