@@ -778,8 +778,7 @@ class TwoPointFile(object):
                     "Data set called {} not found in two-point data file.".format(data_set))
         self.spectra = [s for (u, s) in zip(use, self.spectra) if u]
         if self.covmat is not None:
-            mask = np.concatenate(mask)
-            self.covmat = self.covmat[mask, :][:, mask]
+            self._mask_covmat(mask)
 
     def get_cov_start(self):
 
