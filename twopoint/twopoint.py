@@ -431,7 +431,7 @@ class SpectrumMeasurement(object):
         if (self.metadata is not None) and self.metadata:
             # Check metadata doesn't share any keys with the stuff that's already in the header
             assert set(self.metadata.keys()).isdisjoint(set(header.keys()))
-            for key, val in self.metadata.iteritems():
+            for key, val in self.metadata.items():
                 # Use MD_ prefix so metadata entries can be easily recognised by from_fits
                 header[METADATA_PREFIX+key] = val
         header['N_ANG'] = len(np.unique(self.angular_bin))
@@ -464,7 +464,7 @@ class SpectrumMeasurement(object):
             columns.append(fits.Column(
                 name='VARXI', array=self.varxi, format='D'))
         if self.extra_cols is not None:
-            for (colname, arr) in self.extra_cols.iteritems():
+            for (colname, arr) in self.extra_cols.items():
                 columns.append(fits.Column(
                     name='XTRA_'+colname, array=arr, format='D'))
 
