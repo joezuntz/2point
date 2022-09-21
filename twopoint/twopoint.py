@@ -957,7 +957,6 @@ class TwoPointFile(object):
         if plot_spectrum:
 
             for spectrum in self.spectra:
-
                 corr_type, label, color = corr_names(spectrum)
 
                 if corr_type is None:
@@ -982,14 +981,14 @@ class TwoPointFile(object):
                 if npairs == 0:
                     continue
 
-                # Choose different figure sizes depending on the number of redshift bins
-                if not all(bins1 == bins2):
-                    fig, ax = plt.subplots(nbins2, nbins1, figsize=(1.6*nbins1, 1.6*nbins2), sharey=sharey, sharex=True)
+                auto_only = all(bins1 == bins2)
 
-                if all(bins1 == bins2):
+                # Choose different figure sizes depending on the number of redshift bins
+                if auto_only:
                     # Autocorrelation only will have a different figure size and structure
-                    fig, ax = plt.subplots(1, nbins1, figsize=(1.6*nbins1, 1.4), sharey=sharey, sharex=True)
-                    ax = np.diag(ax)
+                    fig, ax = plt.subplots(1, nbins1, figsize=(1.6*nbins1, 1.4), sharey=sharey, sharex=True, squeeze=False)
+                else:
+                    fig, ax = plt.subplots(nbins2, nbins1, figsize=(1.6*nbins1, 1.6*nbins2), sharey=sharey, sharex=True, squeeze=False)
 
                 if load_pickle:
                     # If we are continuing a plot to compare different files, load the fig and axes objects
@@ -1018,31 +1017,32 @@ class TwoPointFile(object):
                     i,j = pair
                     theta, xi = spectrum.get_pair(i,j)
                     error = spectrum.get_error(i,j)
+                    if auto_only:
+                        ax_ji = ax[0, i-1]
+                    else:
+                        ax_ji = ax[j-1,i-1]
                 
-                    ax[j-1][i-1].errorbar(theta, abs(xi), yerr = error, fmt = mtype, capsize=1.4, markersize=1.5, color = color, mec = color, elinewidth=0.5, markeredgewidth=0.5, label = label_legend)
-                    ax[j-1][i-1].text(0.85, 0.85, "{},{}".format(i, j), horizontalalignment='center',
-                                      verticalalignment='center', transform=ax[j-1][i-1].transAxes, fontsize=12)
+                    ax_ji.errorbar(theta, abs(xi), yerr = error, fmt = mtype, capsize=1.4, markersize=1.5, color = color, mec = color, elinewidth=0.5, markeredgewidth=0.5, label = label_legend)
+                    ax_ji.text(0.85, 0.85, "{},{}".format(i, j), horizontalalignment='center',
+                                      verticalalignment='center', transform=ax_ji.transAxes, fontsize=12)
                     if shade_until is not None:
                         if not load_pickle:
-                            ax[j-1][i-1].axvspan(min(theta)*0.8, shade_until[i-1], color='gray', alpha=0.2)
-                            ax[j-1][i-1].set_xlim(left=min(theta)*0.8, right=max(theta)*1.2)
-                    ax[j-1][i-1].set_xscale('log', nonposx='clip')
-                    ax[j-1][i-1].set_yscale('log', nonposy='clip')
-                    ax[j-1][i-1].xaxis.set_major_formatter(
+                            ax_ji.axvspan(min(theta)*0.8, shade_until[i-1], color='gray', alpha=0.2)
+                            ax_ji.set_xlim(left=min(theta)*0.8, right=max(theta)*1.2)
+                    ax_ji.set_xscale('log', nonpositive='clip')
+                    ax_ji.set_yscale('log', nonpositive='clip')
+                    ax_ji.xaxis.set_major_formatter(
                         ticker.FormatStrFormatter('$%d$'))
                     if blind_yaxis:
-                        ax[j-1][i-1].yaxis.set_ticklabels([])
+                        ax_ji.yaxis.set_ticklabels([])
 
-                    if (not all(bins1 == bins2)) & (j == nbins2):
-                        ax[j-1][i-1].set_xlabel(r"$\theta$ [arcmin]")
-                    if all(bins1 == bins2):
-                        ax[j-1][i-1].set_xlabel(r"$\theta$ [arcmin]")
+                    if (not auto_only) & (j == nbins2):
+                        ax_ji.set_xlabel(r"$\theta$ [arcmin]")
+                    if auto_only:
+                        ax_ji.set_xlabel(r"$\theta$ [arcmin]")
                     if i == 1:
-                        ax[j-1][i-1].set_ylabel(label)
+                        ax_ji.set_ylabel(label)
 
-                    if not save_pickle:
-                        if (not all(bins1 == bins2)) & (corr_type != 'gt') & (j > i):
-                            fig.delaxes(ax[i-1, j-1])
 
                 if not save_pickle:
                     plt.legend(prop={'size': 5})
